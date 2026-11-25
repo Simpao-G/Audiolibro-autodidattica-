@@ -3,8 +3,8 @@ import { Player, type PlayerState } from '../player';
 import type { TtsEngine } from '../tts/engine';
 import { getSettings, onSettingsChange, updateSettings } from '../settings';
 import { savePosition, updateMeta } from '../storage';
-import { clearMediaSession, setKeepAwake, setMediaPlaying, setupMediaSession } from '../media';
-import { h, icon, openDialog } from './dom';
+import { clearMediaSession, setKeepAwake, setMediaMetadata, setMediaPlaying, setupMediaSession } from '../media';
+import { h, icon, openDialog, toast } from './dom';
 import { openSettings, SPEEDS } from './settings';
 
 /** Caratteri al secondo letti a velocità 1× (stima per il tempo rimanente). */
@@ -69,7 +69,7 @@ export function renderReader(root: HTMLElement, meta: BookMeta, chapters: Chapte
       h('button', { class: 'icon-btn', 'aria-label': 'Libreria', onclick: onBack }, icon('arrowLeft')),
       h('h1', {}, meta.title),
       h('button', { class: 'icon-btn', 'aria-label': 'Indice', onclick: () => openToc() }, icon('list')),
-      h('button', { class: 'icon-btn', 'aria-label': 'Impostazioni', onclick: () => openSettings(engine, preview) }, icon('settings')),
+      h('button', { class: 'icon-btn', 'aria-label': 'Impostazioni', onclick: () => openSettings(preview) }, icon('settings')),
     ),
     h('main', { class: 'reader' }, text),
     controls,
@@ -119,7 +119,10 @@ export function renderReader(root: HTMLElement, meta: BookMeta, chapters: Chapte
   let active: HTMLElement | null = null;
   function update(s: PlayerState) {
     const { chapter, sentence } = s.position;
-    if (chapter !== renderedChapter) renderChapter(chapter);
+    if (chapter !== renderedChapter) {
+      renderChapter(chapter);
+      setMediaMetadata(chapters[chapter].title, meta.author ? `${meta.title} · ${meta.author}` : meta.title, meta.cover);
+    }
     const el = spans[sentence] ?? null;
     if (el !== active) {
       active?.classList.remove('active');
@@ -131,8 +134,8 @@ export function renderReader(root: HTMLElement, meta: BookMeta, chapters: Chapte
         if (r.top < 70 || r.bottom > bottomLimit) el.scrollIntoView({ block: 'center', behavior: 'smooth' });
       }
     }
-    playBtn.replaceChildren(icon(s.playing ? 'pause' : 'play'));
-    playBtn.setAttribute('aria-label', s.playing ? 'Pausa' : 'Riproduci');
+    playBtn.replaceChildren(s.playing && s.buffering ? h('div', { class: 'spinner' }) : icon(s.playing ? 'pause' : 'play'));
+    playBtn.setAttribute('aria-label', s.playing ? (s.buffering ? 'Caricamento… (tocca per fermare)' : 'Pausa') : 'Riproduci');
     seek.value = String(Math.min(sentence, spans.length - 1));
     chapterLabel.textContent = `${chapter + 1}/${chapters.length}`;
     const rate = getSettings().rate;
@@ -192,10 +195,10 @@ export function renderReader(root: HTMLElement, meta: BookMeta, chapters: Chapte
   /** Legge la frase corrente (o una frase di esempio) per provare voce/velocità. */
   function preview() {
     player.pause();
+    engine.unlock?.();
     const { chapter, sentence } = player.state.position;
     const sample = chapters[chapter]?.paragraphs.flat()[sentence] ?? 'Ciao, questa è la voce che leggerà il tuo libro.';
-    const s = getSettings();
-    engine.speak(sample, s).catch(() => {});
+    engine.speak(sample, getSettings()).catch((e) => toast(e instanceof Error ? e.message : String(e), 6000));
   }
 
   // ---------- Tastiera e sessione multimediale ----------
@@ -215,8 +218,16 @@ export function renderReader(root: HTMLElement, meta: BookMeta, chapters: Chapte
     prev: () => player.prevSentence(),
   });
 
+  let lastEngine = `${getSettings().engine}|${getSettings().piperVoice}`;
   const offSettings = onSettingsChange((s) => {
     document.documentElement.style.setProperty('--reader-size', `${s.fontSize}px`);
+    engine.updateLive?.({ rate: s.rate, volume: s.volume });
+    // Cambio di motore o di voce: fermiamo la lettura (riparte col nuovo motore)
+    const eng = `${s.engine}|${s.piperVoice}`;
+    if (eng !== lastEngine) {
+      lastEngine = eng;
+      player.pause();
+    }
     showSpeed();
     update(player.state);
   });

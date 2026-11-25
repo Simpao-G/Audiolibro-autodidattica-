@@ -2,14 +2,13 @@ import './style.css';
 import { registerSW } from 'virtual:pwa-register';
 import { getSettings, onSettingsChange, type Settings } from './settings';
 import { getBook, getChapters, requestPersistence } from './storage';
-import { WebSpeechEngine } from './tts/webspeech';
+import { engine } from './tts';
 import { renderLibrary } from './ui/library';
 import { renderReader } from './ui/reader';
 import { openSettings } from './ui/settings';
 import { toast } from './ui/dom';
 
 const root = document.getElementById('app')!;
-const engine = new WebSpeechEngine();
 let cleanup: (() => void) | null = null;
 
 function applyTheme(s: Settings) {
@@ -39,7 +38,13 @@ async function route() {
     await renderLibrary(
       root,
       (id) => (location.hash = `#/libro/${encodeURIComponent(id)}`),
-      () => openSettings(engine, () => engine.speak('Ciao! Questa è la voce che leggerà i tuoi libri.', getSettings()).catch(() => {})),
+      () =>
+        openSettings(() => {
+          engine.unlock?.();
+          engine
+            .speak('Ciao! Questa è la voce che leggerà i tuoi libri.', getSettings())
+            .catch((e) => toast(e instanceof Error ? e.message : String(e), 6000));
+        }),
     );
   }
 }
