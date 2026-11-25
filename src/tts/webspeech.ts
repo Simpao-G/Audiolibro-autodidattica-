@@ -28,7 +28,9 @@ export class WebSpeechEngine implements TtsEngine {
     this.stop();
     return new Promise((resolve, reject) => {
       const u = new SpeechSynthesisUtterance(text);
-      const voice = speechSynthesis.getVoices().find((v) => v.voiceURI === opts.voiceURI);
+      const all = speechSynthesis.getVoices();
+      // Nessuna voce scelta: usa automaticamente la migliore voce italiana del dispositivo
+      const voice = all.find((v) => v.voiceURI === opts.voiceURI) ?? bestItalianVoice(all);
       if (voice) {
         u.voice = voice;
         u.lang = voice.lang;
@@ -72,14 +74,32 @@ export class WebSpeechEngine implements TtsEngine {
   }
 }
 
+/** Punteggio di qualità ricavato dal nome della voce (più alto = meglio). */
+export function voiceScore(v: { name: string; lang: string; voiceURI?: string }): number {
+  const n = `${v.name} ${v.voiceURI ?? ''}`.toLowerCase();
+  let score = v.lang.toLowerCase().startsWith('it') ? 100 : 0;
+  if (/natural|neural/.test(n)) score += 40; // Microsoft Edge "Online (Natural)"
+  if (/premium/.test(n)) score += 35; // iOS/macOS Premium
+  if (/enhanced|ottimizzat|siri/.test(n)) score += 30; // iOS/macOS Enhanced
+  if (/network|wavenet/.test(n)) score += 25; // Android voci Google in rete
+  if (/google/.test(n)) score += 15;
+  if (/compact|eloquence|espeak/.test(n)) score -= 20; // voci robotiche
+  return score;
+}
+
+export function bestItalianVoice<T extends { name: string; lang: string; voiceURI?: string }>(voices: T[]): T | undefined {
+  const it = voices.filter((v) => v.lang.toLowerCase().startsWith('it'));
+  return it.sort((a, b) => voiceScore(b) - voiceScore(a))[0];
+}
+
 function toInfo(v: SpeechSynthesisVoice): VoiceInfo {
-  const high = /natural|neural|online|premium|enhanced|wavenet|google/i.test(v.name);
+  const high = voiceScore({ name: v.name, lang: 'xx', voiceURI: v.voiceURI }) >= 25;
   return { id: v.voiceURI, name: v.name, lang: v.lang, quality: high ? 'alta' : 'normale', local: v.localService };
 }
 
-/** Prima le voci italiane, poi quelle di qualità alta. */
+/** Prima le voci italiane, poi quelle di qualità più alta. */
 function compareVoices(a: VoiceInfo, b: VoiceInfo): number {
-  const it = (v: VoiceInfo) => (v.lang.toLowerCase().startsWith('it') ? 0 : 1);
-  const q = (v: VoiceInfo) => (v.quality === 'alta' ? 0 : 1);
-  return it(a) - it(b) || q(a) - q(b) || a.name.localeCompare(b.name);
+  const sa = voiceScore({ name: a.name, lang: a.lang, voiceURI: a.id });
+  const sb = voiceScore({ name: b.name, lang: b.lang, voiceURI: b.id });
+  return sb - sa || a.name.localeCompare(b.name);
 }

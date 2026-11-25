@@ -13,6 +13,9 @@ const piperDir = join(root, 'node_modules', '@diffusionstudio', 'piper-wasm', 'b
 const files = [
   [ortDir, 'ort-wasm-simd-threaded.mjs'],
   [ortDir, 'ort-wasm-simd-threaded.wasm'],
+  // Versione con WebGPU (scheda grafica), usata dalla voce AI HD
+  [ortDir, 'ort-wasm-simd-threaded.asyncify.mjs'],
+  [ortDir, 'ort-wasm-simd-threaded.asyncify.wasm'],
   [piperDir, 'piper_phonemize.wasm'],
   [piperDir, 'piper_phonemize.data'],
 ];

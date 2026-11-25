@@ -1,5 +1,6 @@
 import { getSettings, updateSettings, type Settings } from '../settings';
-import { deviceEngine, piperEngine } from '../tts';
+import { deviceEngine, piperEngine, supertonicEngine } from '../tts';
+import { SUPERTONIC_MB, SUPERTONIC_VOICES } from '../tts/supertonic';
 import { NEURAL_VOICES } from '../tts/neural';
 import { ENGINE_FILES_MB, PIPER_VOICES } from '../tts/piper';
 import { getCloudStatus } from '../cloud/sync';
@@ -25,7 +26,7 @@ async function deviceSection(): Promise<HTMLElement> {
   const s = getSettings();
   const voices = await deviceEngine.getVoices();
   const select = h('select', { 'aria-label': 'Voce del dispositivo' });
-  select.append(h('option', { value: '' }, 'Predefinita del sistema'));
+  select.append(h('option', { value: '' }, 'Automatica (la migliore italiana)'));
   let lastGroup = '';
   let group: HTMLOptGroupElement | null = null;
   for (const v of voices) {
@@ -43,7 +44,15 @@ async function deviceSection(): Promise<HTMLElement> {
     { class: 'field' },
     h('div', { class: 'label' }, 'Voce del dispositivo'),
     deviceEngine.isSupported() ? select : h('div', { class: 'error-bar' }, 'Questo browser non ha voci di sistema. Usa la voce AI.'),
-    h('div', { class: 'hint' }, '★ = voce di qualità migliore. Su Edge cerca le voci “Natural” (es. Isabella, Diego); su Android installa le voci italiane di Google in Impostazioni › Sintesi vocale.'),
+    h('div', { class: 'hint' }, '★ = voce di qualità migliore. Con “Automatica” l’app sceglie da sola la voce italiana migliore.'),
+    h('details', { class: 'guide' },
+      h('summary', {}, 'Come avere voci migliori gratis sul tuo dispositivo'),
+      h('ul', {},
+        h('li', {}, h('strong', {}, 'iPhone/iPad: '), 'Impostazioni › Accessibilità › Contenuti letti › Voci › Italiano: scarica “Alice (Ottimizzata)” oppure “Federica/Luca (Premium)”.'),
+        h('li', {}, h('strong', {}, 'Android: '), 'Impostazioni › Sistema › Lingue › Output sintesi vocale › Google › Installa dati vocali › Italiano, poi scegli una voce.'),
+        h('li', {}, h('strong', {}, 'PC: '), 'apri l’app con Microsoft Edge: trovi gratis le voci “Isabella / Elsa / Diego Online (Natural)”, di qualità molto alta.'),
+      ),
+    ),
   );
 }
 
@@ -113,6 +122,79 @@ function piperSection(): HTMLElement {
   );
 }
 
+/** Sezione "AI HD": Supertonic 3, voce neurale offline di alta qualità. */
+function supertonicSection(onPreview?: () => void): HTMLElement {
+  const box = h('div', {});
+  const render = async () => {
+    const has = await supertonicEngine.isDownloaded();
+    box.replaceChildren();
+    if (!has) {
+      const status = h('span', { class: 'voice-status' }, `${SUPERTONIC_MB} MB`);
+      const bar = h('div', { class: 'progress', hidden: true }, h('div', { style: 'width:0%' }));
+      const btn = h('button', { class: 'btn' }, 'Scarica la voce HD');
+      btn.addEventListener('click', async () => {
+        btn.disabled = true;
+        bar.hidden = false;
+        try {
+          await supertonicEngine.download((p) => {
+            status.textContent = `Scarico… ${Math.round(p * 100)}%`;
+            (bar.firstElementChild as HTMLElement).style.width = `${Math.round(p * 100)}%`;
+          });
+          updateSettings({ engine: 'supertonic' });
+          toast('Voce AI HD pronta!');
+        } catch (err) {
+          toast(`Download non riuscito: ${err instanceof Error ? err.message : err}`, 6000);
+        }
+        render();
+      });
+      box.append(
+        h('div', { class: 'notice' },
+          h('strong', {}, 'Voce AI di alta qualità, gratis e offline. '),
+          `Si scarica una volta sola (circa ${SUPERTONIC_MB} MB, meglio col Wi-Fi), poi funziona anche senza internet e a schermo bloccato.`),
+        h('div', { class: 'row-buttons' }, btn, status),
+        bar,
+      );
+      return;
+    }
+    const list = h('div', { class: 'voice-grid' });
+    for (const v of SUPERTONIC_VOICES) {
+      const b = h('button', {
+        class: getSettings().supertonicVoice === v.id ? 'pill on' : 'pill',
+        onclick: () => {
+          updateSettings({ supertonicVoice: v.id });
+          list.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
+          onPreview?.();
+        },
+      }, `${v.id.startsWith('F') ? '♀' : '♂'} ${v.id.slice(1)}`);
+      list.append(b);
+    }
+    const accel = supertonicEngine.backend === 'webgpu'
+      ? h('div', { class: 'hint' }, '⚡ Usa la scheda grafica: lettura fluida.')
+      : supertonicEngine.backend === 'wasm'
+        ? h('div', { class: 'notice' }, 'Questo dispositivo non offre l’accelerazione grafica (WebGPU): la voce HD può fare brevi pause tra le frasi. Prova con Chrome o Edge aggiornati, oppure usa “AI leggera” o “Dispositivo”.')
+        : null;
+    box.append(
+      h('div', { class: 'hint', style: 'margin:0 0 8px' }, 'Tocca una voce per ascoltarla: ♀ = femminile, ♂ = maschile.'),
+      list,
+      h('div', { class: 'row-buttons' },
+        h('span', { class: 'voice-status' }, '✓ Scaricata'),
+        h('button', {
+          class: 'pill',
+          onclick: async () => {
+            if (!confirm('Eliminare la voce AI HD dal dispositivo? Potrai riscaricarla quando vuoi.')) return;
+            await supertonicEngine.removeModel();
+            if (getSettings().engine === 'supertonic') updateSettings({ engine: 'device' });
+            render();
+          },
+        }, 'Elimina'),
+      ),
+    );
+    if (accel) box.append(accel);
+  };
+  render();
+  return h('div', { class: 'field' }, h('div', { class: 'label' }, 'Voce AI HD (Supertonic 3)'), box);
+}
+
 /** Sezione "Voci neurali": voci Microsoft di qualità quasi umana (online, serve l'account). */
 function neuralSection(): HTMLElement {
   const list = h('div', { class: 'voice-list' });
@@ -147,13 +229,21 @@ export async function openSettings(onPreview?: () => void): Promise<void> {
 
   // Scelta del motore
   const engineSel = h('div', { class: 'segmented', role: 'radiogroup', 'aria-label': 'Motore vocale' });
-  const opts: [Settings['engine'], string][] = [['neural', '★ Neurali'], ['piper', 'AI offline'], ['device', 'Dispositivo']];
-  const sections: Record<Settings['engine'], HTMLElement> = { neural: neuralSection(), piper: piperSection(), device: await deviceSection() };
+  // Le voci Azure ("neural") restano nel codice ma non sono nel menu: richiedono un account a pagamento.
+  const opts: [Settings['engine'], string][] = [['supertonic', '★ AI HD'], ['piper', 'AI leggera'], ['device', 'Dispositivo']];
+  const sections: Record<Settings['engine'], HTMLElement> = {
+    supertonic: supertonicSection(onPreview),
+    neural: neuralSection(),
+    piper: piperSection(),
+    device: await deviceSection(),
+  };
+  if (s.engine === 'neural') updateSettings({ engine: 'device' });
   const pitchField = range('Tono', 'pitch', 0.5, 2, 0.05, (v) => v.toFixed(2));
   const showEngine = (e: Settings['engine']) => {
     sections.device.hidden = e !== 'device';
     sections.piper.hidden = e !== 'piper';
-    sections.neural.hidden = e !== 'neural';
+    sections.neural.hidden = true;
+    sections.supertonic.hidden = e !== 'supertonic';
     pitchField.hidden = e !== 'device';
     engineSel.querySelectorAll('button').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.v === e)));
   };
@@ -205,6 +295,7 @@ export async function openSettings(onPreview?: () => void): Promise<void> {
       'div',
       {},
       h('div', { class: 'field' }, h('div', { class: 'label' }, 'Motore vocale'), engineSel),
+      sections.supertonic,
       sections.neural,
       sections.piper,
       sections.device,
@@ -220,5 +311,5 @@ export async function openSettings(onPreview?: () => void): Promise<void> {
         h('div', { class: 'hint' }, 'Con le voci del dispositivo, sul telefono la lettura si ferma quando lo schermo si blocca: questa opzione lo evita.')),
     ),
   );
-  showEngine(s.engine);
+  showEngine(getSettings().engine);
 }

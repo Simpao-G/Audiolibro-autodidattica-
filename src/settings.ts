@@ -1,6 +1,7 @@
 export interface Settings {
-  /** 'device' = voci del sistema, 'piper' = voce AI offline, 'neural' = voci neurali Microsoft (online) */
-  engine: 'device' | 'piper' | 'neural';
+  /** 'supertonic' = voce AI HD offline, 'piper' = voce AI leggera, 'device' = voci del sistema, 'neural' = Azure (nascosto) */
+  engine: 'supertonic' | 'device' | 'piper' | 'neural';
+  supertonicVoice: string;
   piperVoice: string;
   neuralVoice: string;
   voiceURI: string | null;
@@ -17,6 +18,7 @@ export interface Settings {
 export const DEFAULTS: Settings = {
   engine: 'device',
   piperVoice: 'it_IT-paola-medium',
+  supertonicVoice: 'F1',
   neuralVoice: 'it-IT-IsabellaNeural',
   voiceURI: null,
   rate: 1,
@@ -32,7 +34,7 @@ const KEY = 'audiolibro:settings';
 const UPDATED_KEY = 'audiolibro:settingsUpdatedAt';
 
 /** Impostazioni condivise tra dispositivi (le altre dipendono dal dispositivo). */
-export const SHARED_KEYS = ['engine', 'piperVoice', 'neuralVoice', 'rate', 'pitch', 'volume', 'theme', 'fontSize', 'paragraphPause'] as const;
+export const SHARED_KEYS = ['engine', 'piperVoice', 'neuralVoice', 'supertonicVoice', 'rate', 'pitch', 'volume', 'theme', 'fontSize', 'paragraphPause'] as const;
 type Listener = (s: Settings) => void;
 const listeners = new Set<Listener>();
 

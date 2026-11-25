@@ -51,6 +51,7 @@ export default defineConfig({
       // Versione di ONNX Runtime che carica i suoi file da public/wasm/ (vedi scripts/copy-wasm.mjs)
       // invece di includerne una seconda copia (15 MB) nella build.
       'onnxruntime-web/wasm': fileURLToPath(new URL('./node_modules/onnxruntime-web/dist/ort.wasm.min.mjs', import.meta.url)),
+      'onnxruntime-web/webgpu': fileURLToPath(new URL('./node_modules/onnxruntime-web/dist/ort.webgpu.min.mjs', import.meta.url)),
     },
   },
   test: {

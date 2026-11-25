@@ -6,6 +6,7 @@ import { savePosition, updateMeta } from '../storage';
 import { clearMediaSession, setKeepAwake, setMediaMetadata, setMediaPlaying, setupMediaSession } from '../media';
 import { h, icon, openDialog, toast } from './dom';
 import { openSettings, SPEEDS } from './settings';
+import { supertonicEngine } from '../tts';
 
 /** Caratteri al secondo letti a velocità 1× (stima per il tempo rimanente). */
 const CHARS_PER_SEC = 14;
@@ -31,6 +32,8 @@ export function renderReader(root: HTMLElement, meta: BookMeta, chapters: Chapte
     onPosition: (p) => savePosition(meta.id, p).catch(() => {}),
   });
   updateMeta(meta.id, { lastOpenedAt: Date.now() }).catch(() => {});
+  // Voce AI HD: carica il modello subito, così la prima frase parte prima
+  if (getSettings().engine === 'supertonic') supertonicEngine.preload();
 
   // ---------- Elementi ----------
   const text = h('article', { class: 'text', 'aria-live': 'off' });
@@ -181,7 +184,7 @@ export function renderReader(root: HTMLElement, meta: BookMeta, chapters: Chapte
     const s = getSettings();
     speedTool.value.textContent = formatRate(s.rate);
     speedTool.btn.classList.toggle('on', Math.abs(s.rate - 1) > 0.001);
-    const names = { neural: 'Neurale', piper: 'AI offline', device: 'Dispositivo' } as const;
+    const names = { supertonic: 'AI HD', neural: 'Neurale', piper: 'AI leggera', device: 'Dispositivo' } as const;
     voiceTool.value.textContent = names[s.engine];
   }
 
@@ -273,7 +276,7 @@ export function renderReader(root: HTMLElement, meta: BookMeta, chapters: Chapte
     prev: () => player.prevSentence(),
   });
 
-  const engineKey = (s: ReturnType<typeof getSettings>) => `${s.engine}|${s.piperVoice}|${s.neuralVoice}`;
+  const engineKey = (s: ReturnType<typeof getSettings>) => `${s.engine}|${s.piperVoice}|${s.neuralVoice}|${s.supertonicVoice}`;
   let lastEngine = engineKey(getSettings());
   const offSettings = onSettingsChange((s) => {
     document.documentElement.style.setProperty('--reader-size', `${s.fontSize}px`);
