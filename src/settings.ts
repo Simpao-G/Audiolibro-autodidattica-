@@ -1,4 +1,7 @@
 export interface Settings {
+  /** 'device' = voci del sistema (Web Speech), 'piper' = voce AI nel browser */
+  engine: 'device' | 'piper';
+  piperVoice: string;
   voiceURI: string | null;
   rate: number;
   pitch: number;
@@ -11,6 +14,8 @@ export interface Settings {
 }
 
 export const DEFAULTS: Settings = {
+  engine: 'device',
+  piperVoice: 'it_IT-paola-medium',
   voiceURI: null,
   rate: 1,
   pitch: 1,

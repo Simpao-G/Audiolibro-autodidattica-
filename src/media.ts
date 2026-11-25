@@ -54,6 +54,17 @@ export function setupMediaSession(title: string, artist: string, cover: string |
   set('seekbackward', h.prev);
 }
 
+/** Aggiorna titolo/artista mostrati nella schermata di blocco (es. al cambio capitolo). */
+export function setMediaMetadata(title: string, artist: string, cover?: string): void {
+  if (!('mediaSession' in navigator)) return;
+  navigator.mediaSession.metadata = new MediaMetadata({
+    title,
+    artist,
+    album: 'Audiolibro',
+    artwork: cover ? [{ src: cover, sizes: '512x512' }] : [],
+  });
+}
+
 export function setMediaPlaying(playing: boolean): void {
   if ('mediaSession' in navigator) navigator.mediaSession.playbackState = playing ? 'playing' : 'paused';
 }

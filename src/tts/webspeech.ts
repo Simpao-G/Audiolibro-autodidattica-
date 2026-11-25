@@ -47,6 +47,7 @@ export class WebSpeechEngine implements TtsEngine {
         if (err) reject(err);
         else resolve();
       };
+      u.onstart = () => opts.onStart?.();
       u.onend = () => finish();
       u.onerror = (e) => {
         // "interrupted"/"canceled" arrivano quando fermiamo noi la lettura: non sono errori

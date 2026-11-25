@@ -53,6 +53,18 @@ describe('Player', () => {
     expect(p.state.position).toEqual({ chapter: 1, sentence: 0 });
   });
 
+  it('prepara in anticipo le frasi successive, anche del capitolo dopo', async () => {
+    const spoken: string[] = [];
+    const prefetched: string[][] = [];
+    const engine = { ...fakeEngine(spoken), prefetch: (t: string[]) => prefetched.push(t) };
+    const p = new Player({ engine, getOptions: opts });
+    p.load(chapters, { chapter: 0, sentence: 1 });
+    p.play();
+    await new Promise<void>((resolve) => p.subscribe((s) => s.finished && resolve()));
+    expect(prefetched[0]).toEqual(['a3', 'b1']);
+    expect(prefetched.at(-1)).toEqual([]);
+  });
+
   it('i salti restano nei limiti', () => {
     const p = new Player({ engine: fakeEngine([]), getOptions: opts });
     p.load(chapters, { chapter: 5, sentence: 99 });

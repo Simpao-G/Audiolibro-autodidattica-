@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
@@ -25,10 +26,30 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,mjs}'],
+        // I file del motore vocale AI (~34 MB) non vengono scaricati da tutti:
+        // sono salvati in cache solo la prima volta che si usa la voce AI.
+        globIgnores: ['wasm/**'],
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
+        runtimeCaching: [
+          {
+            urlPattern: ({ url }) => url.pathname.includes('/wasm/'),
+            handler: 'CacheFirst',
+            options: { cacheName: 'voce-ai-motore', expiration: { maxEntries: 10 } },
+          },
+        ],
       },
     }),
   ],
+  worker: {
+    format: 'es',
+  },
+  resolve: {
+    alias: {
+      // Versione di ONNX Runtime che carica i suoi file da public/wasm/ (vedi scripts/copy-wasm.mjs)
+      // invece di includerne una seconda copia (15 MB) nella build.
+      'onnxruntime-web/wasm': fileURLToPath(new URL('./node_modules/onnxruntime-web/dist/ort.wasm.min.mjs', import.meta.url)),
+    },
+  },
   test: {
     environment: 'happy-dom',
   },

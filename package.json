@@ -5,7 +5,9 @@
   "description": "Audiolibro gratuito: carica un libro (EPUB, PDF, TXT) e ascoltalo con sintesi vocale.",
   "type": "module",
   "scripts": {
+    "predev": "node scripts/copy-wasm.mjs",
     "dev": "vite",
+    "prebuild": "node scripts/copy-wasm.mjs",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "test": "vitest run"
@@ -16,10 +18,12 @@
   },
   "license": "MIT",
   "dependencies": {
+    "@mintplex-labs/piper-tts-web": "^1.0.5",
     "jszip": "^3.10.2",
     "pdfjs-dist": "^6.5.438"
   },
   "devDependencies": {
+    "@diffusionstudio/piper-wasm": "^1.0.0",
     "happy-dom": "^21.0.4",
     "typescript": "^7.0.2",
     "vite": "^8.3.8",
