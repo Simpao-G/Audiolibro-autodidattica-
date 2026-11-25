@@ -1,7 +1,11 @@
 import { getSettings, updateSettings, type Settings } from '../settings';
-import { deviceEngine, piperEngine } from '../tts';
+import { deviceEngine, piperEngine, supertonicEngine } from '../tts';
+import { SUPERTONIC_MB, SUPERTONIC_VOICES } from '../tts/supertonic';
+import { NEURAL_VOICES } from '../tts/neural';
 import { ENGINE_FILES_MB, PIPER_VOICES } from '../tts/piper';
+import { getCloudStatus } from '../cloud/sync';
 import { h, openDialog, toast } from './dom';
+import { openAccount } from './account';
 
 function range(label: string, key: 'rate' | 'pitch' | 'volume' | 'fontSize' | 'paragraphPause', min: number, max: number, step: number, fmt: (v: number) => string, hint?: string) {
   const s = getSettings();
@@ -15,14 +19,14 @@ function range(label: string, key: 'rate' | 'pitch' | 'volume' | 'fontSize' | 'p
   return h('div', { class: 'field' }, h('label', {}, label, out), input, hint ? h('div', { class: 'hint' }, hint) : null);
 }
 
-export const SPEEDS = [0.75, 1, 1.25, 1.5, 1.75, 2];
+export const SPEEDS = [0.5, 0.6, 0.75, 0.85, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3];
 
 /** Sezione "Voci del dispositivo": scelta tra le voci del sistema operativo. */
 async function deviceSection(): Promise<HTMLElement> {
   const s = getSettings();
   const voices = await deviceEngine.getVoices();
   const select = h('select', { 'aria-label': 'Voce del dispositivo' });
-  select.append(h('option', { value: '' }, 'Predefinita del sistema'));
+  select.append(h('option', { value: '' }, 'Automatica (la migliore italiana)'));
   let lastGroup = '';
   let group: HTMLOptGroupElement | null = null;
   for (const v of voices) {
@@ -40,7 +44,15 @@ async function deviceSection(): Promise<HTMLElement> {
     { class: 'field' },
     h('div', { class: 'label' }, 'Voce del dispositivo'),
     deviceEngine.isSupported() ? select : h('div', { class: 'error-bar' }, 'Questo browser non ha voci di sistema. Usa la voce AI.'),
-    h('div', { class: 'hint' }, '★ = voce di qualità migliore. Su Edge cerca le voci “Natural” (es. Isabella, Diego); su Android installa le voci italiane di Google in Impostazioni › Sintesi vocale.'),
+    h('div', { class: 'hint' }, '★ = voce di qualità migliore. Con “Automatica” l’app sceglie da sola la voce italiana migliore.'),
+    h('details', { class: 'guide' },
+      h('summary', {}, 'Come avere voci migliori gratis sul tuo dispositivo'),
+      h('ul', {},
+        h('li', {}, h('strong', {}, 'iPhone/iPad: '), 'Impostazioni › Accessibilità › Contenuti letti › Voci › Italiano: scarica “Alice (Ottimizzata)” oppure “Federica/Luca (Premium)”.'),
+        h('li', {}, h('strong', {}, 'Android: '), 'Impostazioni › Sistema › Lingue › Output sintesi vocale › Google › Installa dati vocali › Italiano, poi scegli una voce.'),
+        h('li', {}, h('strong', {}, 'PC: '), 'apri l’app con Microsoft Edge: trovi gratis le voci “Isabella / Elsa / Diego Online (Natural)”, di qualità molto alta.'),
+      ),
+    ),
   );
 }
 
@@ -110,17 +122,128 @@ function piperSection(): HTMLElement {
   );
 }
 
+/** Sezione "AI HD": Supertonic 3, voce neurale offline di alta qualità. */
+function supertonicSection(onPreview?: () => void): HTMLElement {
+  const box = h('div', {});
+  const render = async () => {
+    const has = await supertonicEngine.isDownloaded();
+    box.replaceChildren();
+    if (!has) {
+      const status = h('span', { class: 'voice-status' }, `${SUPERTONIC_MB} MB`);
+      const bar = h('div', { class: 'progress', hidden: true }, h('div', { style: 'width:0%' }));
+      const btn = h('button', { class: 'btn' }, 'Scarica la voce HD');
+      btn.addEventListener('click', async () => {
+        btn.disabled = true;
+        bar.hidden = false;
+        try {
+          await supertonicEngine.download((p) => {
+            status.textContent = `Scarico… ${Math.round(p * 100)}%`;
+            (bar.firstElementChild as HTMLElement).style.width = `${Math.round(p * 100)}%`;
+          });
+          updateSettings({ engine: 'supertonic' });
+          toast('Voce AI HD pronta!');
+        } catch (err) {
+          toast(`Download non riuscito: ${err instanceof Error ? err.message : err}`, 6000);
+        }
+        render();
+      });
+      box.append(
+        h('div', { class: 'notice' },
+          h('strong', {}, 'Voce AI di alta qualità, gratis e offline. '),
+          `Si scarica una volta sola (circa ${SUPERTONIC_MB} MB, meglio col Wi-Fi), poi funziona anche senza internet e a schermo bloccato.`),
+        h('div', { class: 'row-buttons' }, btn, status),
+        bar,
+      );
+      return;
+    }
+    const list = h('div', { class: 'voice-grid' });
+    for (const v of SUPERTONIC_VOICES) {
+      const b = h('button', {
+        class: getSettings().supertonicVoice === v.id ? 'pill on' : 'pill',
+        onclick: () => {
+          updateSettings({ supertonicVoice: v.id });
+          list.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
+          onPreview?.();
+        },
+      }, `${v.id.startsWith('F') ? '♀' : '♂'} ${v.id.slice(1)}`);
+      list.append(b);
+    }
+    const accel = supertonicEngine.backend === 'webgpu'
+      ? h('div', { class: 'hint' }, '⚡ Usa la scheda grafica: lettura fluida.')
+      : supertonicEngine.backend === 'wasm'
+        ? h('div', { class: 'notice' }, 'Questo dispositivo non offre l’accelerazione grafica (WebGPU): la voce HD può fare brevi pause tra le frasi. Prova con Chrome o Edge aggiornati, oppure usa “AI leggera” o “Dispositivo”.')
+        : null;
+    box.append(
+      h('div', { class: 'hint', style: 'margin:0 0 8px' }, 'Tocca una voce per ascoltarla: ♀ = femminile, ♂ = maschile.'),
+      list,
+      h('div', { class: 'row-buttons' },
+        h('span', { class: 'voice-status' }, '✓ Scaricata'),
+        h('button', {
+          class: 'pill',
+          onclick: async () => {
+            if (!confirm('Eliminare la voce AI HD dal dispositivo? Potrai riscaricarla quando vuoi.')) return;
+            await supertonicEngine.removeModel();
+            if (getSettings().engine === 'supertonic') updateSettings({ engine: 'device' });
+            render();
+          },
+        }, 'Elimina'),
+      ),
+    );
+    if (accel) box.append(accel);
+  };
+  render();
+  return h('div', { class: 'field' }, h('div', { class: 'label' }, 'Voce AI HD (Supertonic 3)'), box);
+}
+
+/** Sezione "Voci neurali": voci Microsoft di qualità quasi umana (online, serve l'account). */
+function neuralSection(): HTMLElement {
+  const list = h('div', { class: 'voice-list' });
+  for (const v of NEURAL_VOICES) {
+    const radio = h('input', { type: 'radio', name: 'neural-voice', value: v.id, checked: getSettings().neuralVoice === v.id, 'aria-label': v.name });
+    radio.addEventListener('change', () => updateSettings({ neuralVoice: v.id }));
+    list.append(
+      h('label', { class: 'voice-row' },
+        radio,
+        h('span', { class: 'voice-name' }, h('strong', {}, v.name), h('small', {}, v.description)),
+        h('span', { class: 'voice-status' }, '★ HD'),
+      ),
+    );
+  }
+  const logged = !!getCloudStatus().user;
+  return h(
+    'div',
+    { class: 'field' },
+    h('div', { class: 'label' }, 'Voci neurali (qualità migliore)'),
+    logged
+      ? null
+      : h('div', { class: 'notice' }, 'Per queste voci serve l’account. ',
+          h('button', { class: 'link-btn', type: 'button', onclick: () => openAccount() }, 'Accedi o registrati')),
+    list,
+    h('div', { class: 'hint' },
+      'Voci Microsoft di qualità quasi umana, generate online (serve internet). La lettura continua anche a schermo bloccato.'),
+  );
+}
+
 export async function openSettings(onPreview?: () => void): Promise<void> {
   const s = getSettings();
 
   // Scelta del motore
   const engineSel = h('div', { class: 'segmented', role: 'radiogroup', 'aria-label': 'Motore vocale' });
-  const opts: [Settings['engine'], string][] = [['device', 'Voci del dispositivo'], ['piper', 'Voce AI (offline)']];
-  const sections: Record<Settings['engine'], HTMLElement> = { device: await deviceSection(), piper: piperSection() };
+  // Le voci Azure ("neural") restano nel codice ma non sono nel menu: richiedono un account a pagamento.
+  const opts: [Settings['engine'], string][] = [['supertonic', '★ AI HD'], ['piper', 'AI leggera'], ['device', 'Dispositivo']];
+  const sections: Record<Settings['engine'], HTMLElement> = {
+    supertonic: supertonicSection(onPreview),
+    neural: neuralSection(),
+    piper: piperSection(),
+    device: await deviceSection(),
+  };
+  if (s.engine === 'neural') updateSettings({ engine: 'device' });
   const pitchField = range('Tono', 'pitch', 0.5, 2, 0.05, (v) => v.toFixed(2));
   const showEngine = (e: Settings['engine']) => {
     sections.device.hidden = e !== 'device';
     sections.piper.hidden = e !== 'piper';
+    sections.neural.hidden = true;
+    sections.supertonic.hidden = e !== 'supertonic';
     pitchField.hidden = e !== 'device';
     engineSel.querySelectorAll('button').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.v === e)));
   };
@@ -136,7 +259,7 @@ export async function openSettings(onPreview?: () => void): Promise<void> {
       }, label),
     );
   }
-  if (!piperEngine.isSupported()) (engineSel.lastElementChild as HTMLButtonElement).disabled = true;
+  if (!piperEngine.isSupported()) (engineSel.querySelector('[data-v="piper"]') as HTMLButtonElement).disabled = true;
 
   const preview = h('button', { class: 'btn secondary', onclick: () => onPreview?.() }, 'Prova la voce');
 
@@ -172,8 +295,10 @@ export async function openSettings(onPreview?: () => void): Promise<void> {
       'div',
       {},
       h('div', { class: 'field' }, h('div', { class: 'label' }, 'Motore vocale'), engineSel),
-      sections.device,
+      sections.supertonic,
+      sections.neural,
       sections.piper,
+      sections.device,
       h('div', { class: 'field' }, preview),
       rateField,
       pitchField,
@@ -186,5 +311,5 @@ export async function openSettings(onPreview?: () => void): Promise<void> {
         h('div', { class: 'hint' }, 'Con le voci del dispositivo, sul telefono la lettura si ferma quando lo schermo si blocca: questa opzione lo evita.')),
     ),
   );
-  showEngine(s.engine);
+  showEngine(getSettings().engine);
 }

@@ -213,6 +213,58 @@ dialog .body { padding: 16px 20px 24px; overflow-y: auto; max-height: calc(85vh 
 .pill:disabled { opacity: 0.5; }
 .play .spinner { width: 28px; height: 28px; border-width: 3px; border-color: color-mix(in srgb, var(--accent-text) 35%, transparent); border-top-color: var(--accent-text); }
 
+/* ---------- Controlli del lettore (nuovo design) ---------- */
+.text { padding-bottom: 300px; }
+.controls {
+  border-top: 0; border-radius: 22px 22px 0 0;
+  padding: 14px 16px calc(14px + env(safe-area-inset-bottom));
+  box-shadow: 0 -8px 30px rgba(40, 25, 5, 0.14);
+}
+.controls .inner { gap: 10px; }
+.now { display: flex; flex-direction: column; gap: 2px; text-align: center; }
+.now-title { font-family: var(--font-book); font-size: 1.05rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.now-meta { font-size: 0.78rem; color: var(--muted); }
+.seek { font-variant-numeric: tabular-nums; gap: 12px; }
+.seek span { min-width: 42px; }
+.seek span:last-child { text-align: right; }
+.seek input { height: 24px; }
+.buttons { justify-content: center; gap: 6px; }
+.ctrl {
+  display: grid; place-items: center; width: 48px; height: 48px; border: 0; border-radius: 50%;
+  background: transparent; color: var(--text); cursor: pointer;
+}
+.ctrl:hover { background: var(--surface-2); }
+.ctrl svg { width: 24px; height: 24px; }
+.ctrl.big { width: 56px; height: 56px; }
+.ctrl.big svg { width: 30px; height: 30px; }
+.buttons .play { width: 72px; height: 72px; margin: 0 6px; }
+.buttons .play svg { width: 34px; height: 34px; }
+.tools { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; border-top: 1px solid var(--border); padding-top: 8px; }
+.tool {
+  display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px 2px; min-height: 52px;
+  border: 0; border-radius: 12px; background: transparent; cursor: pointer; color: var(--muted);
+}
+.tool svg { width: 22px; height: 22px; }
+.tool-label { font-size: 0.75rem; font-weight: 600; white-space: nowrap; }
+.tool:hover { background: var(--surface-2); }
+.tool.on { color: var(--accent); }
+
+/* Menu velocità */
+.speed-sheet { display: flex; flex-direction: column; gap: 16px; }
+.speed-stepper { display: flex; align-items: center; justify-content: center; gap: 18px; }
+.speed-stepper .ctrl { background: var(--surface-2); }
+.speed-current { font-size: 2.4rem; font-weight: 700; min-width: 4ch; text-align: center; font-variant-numeric: tabular-nums; }
+.speed-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.speed-grid .pill { height: 46px; font-size: 1rem; }
+.notice { background: var(--surface-2); border-radius: 10px; padding: 10px 12px; font-size: 0.88rem; margin-bottom: 8px; }
+
+.voice-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-bottom: 10px; }
+.voice-grid .pill { height: 42px; }
+.guide { margin-top: 10px; font-size: 0.88rem; }
+.guide summary { cursor: pointer; color: var(--accent); font-weight: 600; }
+.guide ul { padding-left: 18px; margin: 8px 0 0; line-height: 1.45; }
+.guide li { margin-bottom: 6px; }
+
 /* ---------- Logo e account ---------- */
 .topbar .logo { width: 34px; height: 34px; border-radius: 9px; flex: none; }
 .account-btn { position: relative; }
@@ -241,7 +293,7 @@ dialog .body { padding: 16px 20px 24px; overflow-y: auto; max-height: calc(85vh 
 .row-buttons { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
 
 .toast {
-  position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 20;
+  position: fixed; left: 50%; top: calc(72px + env(safe-area-inset-top)); transform: translateX(-50%); z-index: 20;
   background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 10px; font-size: 0.9rem;
   box-shadow: var(--shadow); max-width: calc(100% - 32px);
 }
