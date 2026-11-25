@@ -1,15 +1,18 @@
 import { getSettings } from '../settings';
 import type { SpeakOptions, TtsEngine, VoiceInfo } from './engine';
+import { NeuralEngine } from './neural';
 import { PiperEngine } from './piper';
 import { WebSpeechEngine } from './webspeech';
 
 export const deviceEngine = new WebSpeechEngine();
 export const piperEngine = new PiperEngine(() => getSettings().piperVoice);
+export const neuralEngine = new NeuralEngine(() => getSettings().neuralVoice);
 
 /** Motore attivo secondo le impostazioni (voci del dispositivo o voce AI Piper). */
 class SwitchEngine implements TtsEngine {
   private get current(): TtsEngine {
-    return getSettings().engine === 'piper' ? piperEngine : deviceEngine;
+    const e = getSettings().engine;
+    return e === 'piper' ? piperEngine : e === 'neural' ? neuralEngine : deviceEngine;
   }
   get name() {
     return this.current.name;
@@ -26,6 +29,7 @@ class SwitchEngine implements TtsEngine {
   stop() {
     deviceEngine.stop();
     piperEngine.stop();
+    neuralEngine.stop();
   }
   prefetch(texts: string[]) {
     this.current.prefetch?.(texts);

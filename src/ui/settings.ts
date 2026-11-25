@@ -1,7 +1,10 @@
 import { getSettings, updateSettings, type Settings } from '../settings';
 import { deviceEngine, piperEngine } from '../tts';
+import { NEURAL_VOICES } from '../tts/neural';
 import { ENGINE_FILES_MB, PIPER_VOICES } from '../tts/piper';
+import { getCloudStatus } from '../cloud/sync';
 import { h, openDialog, toast } from './dom';
+import { openAccount } from './account';
 
 function range(label: string, key: 'rate' | 'pitch' | 'volume' | 'fontSize' | 'paragraphPause', min: number, max: number, step: number, fmt: (v: number) => string, hint?: string) {
   const s = getSettings();
@@ -15,7 +18,7 @@ function range(label: string, key: 'rate' | 'pitch' | 'volume' | 'fontSize' | 'p
   return h('div', { class: 'field' }, h('label', {}, label, out), input, hint ? h('div', { class: 'hint' }, hint) : null);
 }
 
-export const SPEEDS = [0.75, 1, 1.25, 1.5, 1.75, 2];
+export const SPEEDS = [0.5, 0.6, 0.75, 0.85, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3];
 
 /** Sezione "Voci del dispositivo": scelta tra le voci del sistema operativo. */
 async function deviceSection(): Promise<HTMLElement> {
@@ -110,17 +113,47 @@ function piperSection(): HTMLElement {
   );
 }
 
+/** Sezione "Voci neurali": voci Microsoft di qualità quasi umana (online, serve l'account). */
+function neuralSection(): HTMLElement {
+  const list = h('div', { class: 'voice-list' });
+  for (const v of NEURAL_VOICES) {
+    const radio = h('input', { type: 'radio', name: 'neural-voice', value: v.id, checked: getSettings().neuralVoice === v.id, 'aria-label': v.name });
+    radio.addEventListener('change', () => updateSettings({ neuralVoice: v.id }));
+    list.append(
+      h('label', { class: 'voice-row' },
+        radio,
+        h('span', { class: 'voice-name' }, h('strong', {}, v.name), h('small', {}, v.description)),
+        h('span', { class: 'voice-status' }, '★ HD'),
+      ),
+    );
+  }
+  const logged = !!getCloudStatus().user;
+  return h(
+    'div',
+    { class: 'field' },
+    h('div', { class: 'label' }, 'Voci neurali (qualità migliore)'),
+    logged
+      ? null
+      : h('div', { class: 'notice' }, 'Per queste voci serve l’account. ',
+          h('button', { class: 'link-btn', type: 'button', onclick: () => openAccount() }, 'Accedi o registrati')),
+    list,
+    h('div', { class: 'hint' },
+      'Voci Microsoft di qualità quasi umana, generate online (serve internet). La lettura continua anche a schermo bloccato.'),
+  );
+}
+
 export async function openSettings(onPreview?: () => void): Promise<void> {
   const s = getSettings();
 
   // Scelta del motore
   const engineSel = h('div', { class: 'segmented', role: 'radiogroup', 'aria-label': 'Motore vocale' });
-  const opts: [Settings['engine'], string][] = [['device', 'Voci del dispositivo'], ['piper', 'Voce AI (offline)']];
-  const sections: Record<Settings['engine'], HTMLElement> = { device: await deviceSection(), piper: piperSection() };
+  const opts: [Settings['engine'], string][] = [['neural', '★ Neurali'], ['piper', 'AI offline'], ['device', 'Dispositivo']];
+  const sections: Record<Settings['engine'], HTMLElement> = { neural: neuralSection(), piper: piperSection(), device: await deviceSection() };
   const pitchField = range('Tono', 'pitch', 0.5, 2, 0.05, (v) => v.toFixed(2));
   const showEngine = (e: Settings['engine']) => {
     sections.device.hidden = e !== 'device';
     sections.piper.hidden = e !== 'piper';
+    sections.neural.hidden = e !== 'neural';
     pitchField.hidden = e !== 'device';
     engineSel.querySelectorAll('button').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.v === e)));
   };
@@ -136,7 +169,7 @@ export async function openSettings(onPreview?: () => void): Promise<void> {
       }, label),
     );
   }
-  if (!piperEngine.isSupported()) (engineSel.lastElementChild as HTMLButtonElement).disabled = true;
+  if (!piperEngine.isSupported()) (engineSel.querySelector('[data-v="piper"]') as HTMLButtonElement).disabled = true;
 
   const preview = h('button', { class: 'btn secondary', onclick: () => onPreview?.() }, 'Prova la voce');
 
@@ -172,8 +205,9 @@ export async function openSettings(onPreview?: () => void): Promise<void> {
       'div',
       {},
       h('div', { class: 'field' }, h('div', { class: 'label' }, 'Motore vocale'), engineSel),
-      sections.device,
+      sections.neural,
       sections.piper,
+      sections.device,
       h('div', { class: 'field' }, preview),
       rateField,
       pitchField,

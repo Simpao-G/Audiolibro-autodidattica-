@@ -190,19 +190,21 @@ export class Player {
         continue;
       }
       const opts = this.deps.getOptions();
-      this.deps.engine.prefetch?.(this.upcoming(chapter, sentence, PREFETCH));
       // Mostra "caricamento" solo se l'audio tarda a partire (evita sfarfallii tra le frasi)
       const slow = setTimeout(() => {
         if (gen === this.gen && !this.state.buffering) this.set({ buffering: true });
       }, 400);
       try {
-        await this.deps.engine.speak(list[sentence], {
+        const speaking = this.deps.engine.speak(list[sentence], {
           ...opts,
           onStart: () => {
             clearTimeout(slow);
             if (gen === this.gen && this.state.buffering) this.set({ buffering: false });
           },
         });
+        // Prima la frase da leggere ora, poi la preparazione delle successive
+        this.deps.engine.prefetch?.(this.upcoming(chapter, sentence, PREFETCH));
+        await speaking;
       } catch (e) {
         if (gen !== this.gen) return;
         this.gen++;

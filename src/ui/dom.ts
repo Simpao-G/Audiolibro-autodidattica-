@@ -28,6 +28,10 @@ const PATHS: Record<string, string> = {
   close: '<path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>',
   upload: '<path d="M12 16V4m0 0l-5 5m5-5l5 5M5 20h14" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
   trash: '<path d="M5 7h14M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
+  mic: '<rect x="9" y="3" width="6" height="11" rx="3" stroke="currentColor" stroke-width="2" fill="none"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/>',
+  gauge: '<path d="M4.2 17a8.5 8.5 0 1 1 15.6 0" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/><path d="M12 14l4-5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="12" cy="14" r="1.6" fill="currentColor"/>',
+  minus: '<path d="M6 12h12" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>',
+  plus: '<path d="M6 12h12M12 6v12" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>',
   user: '<circle cx="12" cy="8.5" r="4" stroke="currentColor" stroke-width="2" fill="none"/><path d="M4.5 20c1.2-3.6 4.1-5.5 7.5-5.5s6.3 1.9 7.5 5.5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/>',
   moon: '<path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z" stroke="currentColor" stroke-width="2" fill="none" stroke-linejoin="round"/>',
 };

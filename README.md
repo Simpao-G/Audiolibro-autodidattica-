@@ -24,6 +24,22 @@ La sincronizzazione è automatica quando sei online, e un libro eliminato sparis
 Il backend è un progetto Supabase gratuito (lo schema è in `supabase/migrations/`). Ogni utente vede solo i propri dati, grazie alle regole Row Level Security.
 Il piano gratuito include 1 GB di spazio. Se nessuno usa l'app per circa una settimana, il progetto va in pausa e si riattiva dalla dashboard di Supabase.
 
+## Voci neurali (qualità migliore, gratis)
+Sono le voci Microsoft **Isabella, Elsa, Diego e Giuseppe**, di qualità quasi umana. Le genera il servizio ufficiale **Azure Speech**, passando dalla funzione `tts` di Supabase (`supabase/functions/tts`), che tiene nascosta la chiave. Per usarle servono l'account dell'app e internet.
+
+Il piano gratuito **F0** include **500.000 caratteri al mese**, cioè circa 3-4 romanzi. Quando sono finiti il servizio si ferma fino al mese dopo, senza addebiti.
+
+**Configurazione (una volta sola):**
+1. Crea un account Azure gratuito. Gli studenti possono usare [Azure for Students](https://azure.microsoft.com/free/students/), che non chiede la carta di credito.
+2. Nel portale Azure crea una risorsa **Speech** (Servizi di Azure AI › Speech service):
+   - piano tariffario **Free F0**;
+   - regione per esempio **West Europe**.
+3. Apri la risorsa, poi **Chiavi ed endpoint**, e copia **KEY 1** e la **regione** (es. `westeurope`).
+4. Su Supabase apri il progetto *audiolibro*, poi **Edge Functions › Secrets**, e aggiungi:
+   - `AZURE_SPEECH_KEY` = la chiave;
+   - `AZURE_SPEECH_REGION` = la regione (es. `westeurope`).
+5. Nell'app vai su *Voce › ★ Neurali*, scegli una voce e premi Play.
+
 ## Voce AI offline (Piper)
 In *Impostazioni › Motore vocale* scegli **Voce AI (offline)** e scarica una voce italiana:
 - **Paola**: femminile, qualità buona (circa 63 MB).

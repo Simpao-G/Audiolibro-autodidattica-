@@ -1,4 +1,5 @@
-import type { SpeakOptions, TtsEngine, VoiceInfo } from './engine';
+import { ClipEngine } from './clip';
+import type { VoiceInfo } from './engine';
 import type { WorkerRequest, WorkerResponse } from './piper.worker';
 
 export interface PiperVoice {
@@ -17,34 +18,22 @@ export const PIPER_VOICES: PiperVoice[] = [
 /** File del motore (ONNX Runtime + fonetica), scaricati una volta insieme alla prima voce. */
 export const ENGINE_FILES_MB = 34;
 
-/** Frasi già convertite in audio tenute in memoria. */
-const CACHE_SIZE = 16;
-
 type Pending = { resolve: (r: WorkerResponse) => void; reject: (e: Error) => void; onProgress?: (p: number) => void };
-type QueueItem = { key: string; text: string; resolve: (url: string) => void; reject: (e: Error) => void };
 
 /**
- * Motore "voce AI": genera l'audio di ogni frase nel browser con Piper (in un Web Worker)
- * e lo riproduce con un elemento <audio>. Così la lettura può continuare a schermo bloccato
- * e compare nei controlli multimediali del telefono.
+ * Motore "voce AI offline": genera l'audio di ogni frase nel browser con Piper (in un Web Worker).
  */
-export class PiperEngine implements TtsEngine {
-  readonly name = 'Voce AI (Piper)';
+export class PiperEngine extends ClipEngine {
+  readonly name = 'Voce AI offline (Piper)';
   private worker: Worker | null = null;
   private nextId = 1;
   private pending = new Map<number, Pending>();
   private readyVoice: string | null = null;
   private loading: { voice: string; promise: Promise<void> } | null = null;
-  private cache = new Map<string, Promise<string>>();
-  private urls = new Map<string, string>();
-  private queue: QueueItem[] = [];
-  private busy = false;
-  private audio: HTMLAudioElement | null = null;
-  private token = 0;
-  private finish: (() => void) | null = null;
-  private playingKey: string | null = null;
 
-  constructor(private getVoiceId: () => string) {}
+  constructor(private getVoiceId: () => string) {
+    super();
+  }
 
   isSupported(): boolean {
     return typeof Worker !== 'undefined' && typeof WebAssembly !== 'undefined' && !!navigator.storage?.getDirectory;
@@ -92,156 +81,30 @@ export class PiperEngine implements TtsEngine {
     await remove(voiceId);
   }
 
-  async speak(text: string, opts: SpeakOptions): Promise<void> {
-    this.stop();
-    const token = this.token;
+  protected voiceKey(): string {
+    return `piper:${this.getVoiceId()}`;
+  }
+
+  protected canPrefetch(): boolean {
+    return this.readyVoice === this.getVoiceId();
+  }
+
+  protected async prepare(): Promise<void> {
     const voice = this.getVoiceId();
-    if (this.readyVoice !== voice) {
-      if (!(await this.isDownloaded(voice))) {
-        throw new Error('La voce AI non è ancora scaricata: aprila nelle impostazioni e premi “Scarica”');
-      }
-      await this.ensureReady(voice);
+    if (this.readyVoice === voice) return;
+    if (!(await this.isDownloaded(voice))) {
+      throw new Error('La voce AI non è ancora scaricata: aprila nelle impostazioni e premi “Scarica”');
     }
-    const key = this.keyFor(text);
-    const url = await this.synthesize(text, true);
-    if (token !== this.token) return;
-    const audio = this.getAudio();
-    return new Promise<void>((resolve, reject) => {
-      const done = (err?: Error) => {
-        if (this.finish !== fin) return;
-        this.finish = null;
-        this.playingKey = null;
-        audio.onended = audio.onerror = audio.onplaying = null;
-        if (err) reject(err);
-        else resolve();
-      };
-      const fin = () => done();
-      this.finish = fin;
-      this.playingKey = key;
-      audio.onended = () => done();
-      audio.onerror = () => done(new Error('Errore nella riproduzione audio'));
-      audio.onplaying = () => opts.onStart?.();
-      audio.src = url;
-      // Il cambio di sorgente riporta la velocità a defaultPlaybackRate: le impostiamo entrambe.
-      audio.defaultPlaybackRate = opts.rate;
-      audio.playbackRate = opts.rate;
-      audio.volume = opts.volume;
-      audio.play().catch((e: DOMException) => {
-        if (e.name === 'AbortError') return;
-        done(new Error(e.name === 'NotAllowedError' ? 'Il browser ha bloccato l’audio: premi di nuovo Play' : e.message));
-      });
-    });
+    await this.ensureReady(voice);
   }
 
-  stop(): void {
-    this.token++;
-    this.audio?.pause();
-    this.finish?.();
+  protected async generate(text: string): Promise<Blob> {
+    const res = await this.call({ type: 'predict', text });
+    if (res.type !== 'audio') throw new Error('Risposta inattesa dalla voce AI');
+    return res.wav;
   }
 
-  prefetch(texts: string[]): void {
-    if (this.readyVoice !== this.getVoiceId()) return;
-    const wanted = new Set(texts.map((t) => this.keyFor(t)));
-    // Scarta le frasi in coda che non servono più (es. dopo un salto di capitolo).
-    this.queue = this.queue.filter((q) => {
-      if (wanted.has(q.key)) return true;
-      this.cache.delete(q.key);
-      return false;
-    });
-    for (const t of texts) this.synthesize(t, false).catch(() => {});
-  }
-
-  unlock(): void {
-    // Su iOS/Safari l'audio può partire solo da un tocco: facciamo "play" di un silenzio
-    // sullo stesso elemento, così le frasi successive potranno partire da sole.
-    const audio = this.getAudio();
-    if (!audio.paused) return;
-    audio.src = SILENCE;
-    audio.play().catch(() => {});
-  }
-
-  updateLive(opts: Pick<SpeakOptions, 'rate' | 'volume'>): void {
-    if (!this.audio) return;
-    this.audio.defaultPlaybackRate = opts.rate;
-    this.audio.playbackRate = opts.rate;
-    this.audio.volume = opts.volume;
-  }
-
-  // ---------- interni ----------
-
-  private keyFor(text: string): string {
-    return `${this.getVoiceId()}|${text}`;
-  }
-
-  private getAudio(): HTMLAudioElement {
-    if (!this.audio) {
-      this.audio = new Audio();
-      this.audio.preload = 'auto';
-      (this.audio as HTMLAudioElement & { preservesPitch?: boolean }).preservesPitch = true;
-    }
-    return this.audio;
-  }
-
-  /** Restituisce l'URL dell'audio per una frase, generandolo se serve. */
-  private synthesize(text: string, urgent: boolean): Promise<string> {
-    const key = this.keyFor(text);
-    const cached = this.cache.get(key);
-    if (cached) {
-      if (urgent) {
-        const i = this.queue.findIndex((q) => q.key === key);
-        if (i > 0) this.queue.unshift(...this.queue.splice(i, 1));
-      }
-      return cached;
-    }
-    const promise = new Promise<string>((resolve, reject) => {
-      const item = { key, text, resolve, reject };
-      if (urgent) this.queue.unshift(item);
-      else this.queue.push(item);
-    });
-    this.cache.set(key, promise);
-    promise.catch(() => this.cache.delete(key));
-    this.evict();
-    this.pump();
-    return promise;
-  }
-
-  private async pump(): Promise<void> {
-    if (this.busy) return;
-    const item = this.queue.shift();
-    if (!item) return;
-    this.busy = true;
-    try {
-      const res = await this.call({ type: 'predict', text: item.text });
-      if (res.type !== 'audio') throw new Error('Risposta inattesa dalla voce AI');
-      const url = URL.createObjectURL(res.wav);
-      this.urls.set(item.key, url);
-      item.resolve(url);
-    } catch (e) {
-      item.reject(e instanceof Error ? e : new Error(String(e)));
-    } finally {
-      this.busy = false;
-      this.pump();
-    }
-  }
-
-  private evict(): void {
-    for (const key of this.cache.keys()) {
-      if (this.cache.size <= CACHE_SIZE) break;
-      if (key === this.playingKey || this.queue.some((q) => q.key === key)) continue;
-      this.cache.delete(key);
-      const url = this.urls.get(key);
-      if (url) URL.revokeObjectURL(url);
-      this.urls.delete(key);
-    }
-  }
-
-  private clearCache(): void {
-    for (const q of this.queue) q.reject(new Error('Voce cambiata'));
-    this.queue = [];
-    this.cache.clear();
-    for (const url of this.urls.values()) URL.revokeObjectURL(url);
-    this.urls.clear();
-  }
+  // ---------- Worker ----------
 
   private getWorker(): Worker {
     if (!this.worker) {
@@ -286,31 +149,6 @@ export class PiperEngine implements TtsEngine {
     this.failAll(new Error('Motore vocale riavviato'));
     this.readyVoice = null;
     this.loading = null;
-    this.busy = false;
-    this.clearCache();
+    this.resetQueue();
   }
 }
-
-/** 0,1 secondi di silenzio in WAV (usato per sbloccare l'audio su iOS). */
-const SILENCE = (() => {
-  const rate = 8000;
-  const n = rate / 10;
-  const buf = new ArrayBuffer(44 + n * 2);
-  const v = new DataView(buf);
-  const w = (o: number, s: string) => [...s].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
-  w(0, 'RIFF');
-  v.setUint32(4, 36 + n * 2, true);
-  w(8, 'WAVEfmt ');
-  v.setUint32(16, 16, true);
-  v.setUint16(20, 1, true);
-  v.setUint16(22, 1, true);
-  v.setUint32(24, rate, true);
-  v.setUint32(28, rate * 2, true);
-  v.setUint16(32, 2, true);
-  v.setUint16(34, 16, true);
-  w(36, 'data');
-  v.setUint32(40, n * 2, true);
-  let bin = '';
-  new Uint8Array(buf).forEach((b) => (bin += String.fromCharCode(b)));
-  return `data:audio/wav;base64,${btoa(bin)}`;
-})();

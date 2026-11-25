@@ -10,12 +10,16 @@ import { openSettings, SPEEDS } from './settings';
 /** Caratteri al secondo letti a velocità 1× (stima per il tempo rimanente). */
 const CHARS_PER_SEC = 14;
 
-function formatMinutes(sec: number): string {
-  const m = Math.round(sec / 60);
-  if (m < 1) return '<1 min';
-  if (m < 60) return `${m} min`;
-  return `${Math.floor(m / 60)} h ${m % 60} min`;
+/** Durata come 4:05 o 1:02:05. */
+function formatClock(sec: number): string {
+  const t = Math.max(0, Math.round(sec));
+  const h = Math.floor(t / 3600);
+  const m = Math.floor((t % 3600) / 60);
+  const s = String(t % 60).padStart(2, '0');
+  return h ? `${h}:${String(m).padStart(2, '0')}:${s}` : `${m}:${s}`;
 }
+
+const formatRate = (r: number) => `${r.toFixed(2).replace(/\.?0+$/, '')}×`;
 
 export function renderReader(root: HTMLElement, meta: BookMeta, chapters: Chapter[], engine: TtsEngine, onBack: () => void): () => void {
   const player = new Player({
@@ -32,13 +36,24 @@ export function renderReader(root: HTMLElement, meta: BookMeta, chapters: Chapte
   const text = h('article', { class: 'text', 'aria-live': 'off' });
   const playBtn = h('button', { class: 'play', 'aria-label': 'Riproduci', onclick: () => player.toggle() }, icon('play'));
   const seek = h('input', { type: 'range', min: 0, max: 0, step: 1, value: 0, 'aria-label': 'Posizione nel capitolo' });
-  const chapterLabel = h('span', {});
-  const remainLabel = h('span', {});
-  const speedBtn = h('button', { class: 'pill', 'aria-label': 'Velocità', onclick: () => cycleSpeed() });
-  const sleepBtn = h('button', { class: 'pill', 'aria-label': 'Timer di spegnimento', onclick: () => openSleep() }, icon('moon'));
+  const nowTitle = h('div', { class: 'now-title' });
+  const nowMeta = h('div', { class: 'now-meta' });
+  const elapsedLabel = h('span', {});
+  const remainLabel = h('span', { title: 'Tempo stimato alla fine del capitolo' });
   const errorBar = h('div', { class: 'error-bar', hidden: true });
 
-  const ctrl = (name: string, label: string, fn: () => void) => h('button', { class: 'icon-btn', 'aria-label': label, title: label, onclick: fn }, icon(name));
+  const ctrl = (name: string, label: string, fn: () => void, cls = 'ctrl') =>
+    h('button', { class: cls, 'aria-label': label, title: label, onclick: fn }, icon(name));
+  /** Pulsante con icona e scritta sotto (riga degli strumenti). */
+  const tool = (name: string, label: string, fn: () => void) => {
+    const value = h('span', { class: 'tool-label' }, label);
+    const btn = h('button', { class: 'tool', 'aria-label': label, onclick: fn }, icon(name), value);
+    return { btn, value };
+  };
+  const speedTool = tool('gauge', 'Velocità', () => openSpeed());
+  const voiceTool = tool('mic', 'Voce', () => openSettings(preview));
+  const sleepTool = tool('moon', 'Timer', () => openSleep());
+  const tocTool = tool('list', 'Capitoli', () => openToc());
 
   const controls = h(
     'div',
@@ -47,18 +62,18 @@ export function renderReader(root: HTMLElement, meta: BookMeta, chapters: Chapte
       'div',
       { class: 'inner' },
       errorBar,
-      h('div', { class: 'seek' }, chapterLabel, seek, remainLabel),
+      h('div', { class: 'now' }, nowTitle, nowMeta),
+      h('div', { class: 'seek' }, elapsedLabel, seek, remainLabel),
       h(
         'div',
         { class: 'buttons' },
-        speedBtn,
         ctrl('prev', 'Capitolo precedente', () => player.prevChapter()),
-        ctrl('back', 'Frase precedente', () => player.prevSentence()),
+        ctrl('back', 'Frase precedente', () => player.prevSentence(), 'ctrl big'),
         playBtn,
-        ctrl('fwd', 'Frase successiva', () => player.nextSentence()),
+        ctrl('fwd', 'Frase successiva', () => player.nextSentence(), 'ctrl big'),
         ctrl('next', 'Capitolo successivo', () => player.nextChapter()),
-        sleepBtn,
       ),
+      h('div', { class: 'tools' }, speedTool.btn, voiceTool.btn, sleepTool.btn, tocTool.btn),
     ),
   );
 
@@ -68,7 +83,6 @@ export function renderReader(root: HTMLElement, meta: BookMeta, chapters: Chapte
       { class: 'topbar' },
       h('button', { class: 'icon-btn', 'aria-label': 'Libreria', onclick: onBack }, icon('arrowLeft')),
       h('h1', {}, meta.title),
-      h('button', { class: 'icon-btn', 'aria-label': 'Indice', onclick: () => openToc() }, icon('list')),
       h('button', { class: 'icon-btn', 'aria-label': 'Impostazioni', onclick: () => openSettings(preview) }, icon('settings')),
     ),
     h('main', { class: 'reader' }, text),
@@ -137,20 +151,25 @@ export function renderReader(root: HTMLElement, meta: BookMeta, chapters: Chapte
     playBtn.replaceChildren(s.playing && s.buffering ? h('div', { class: 'spinner' }) : icon(s.playing ? 'pause' : 'play'));
     playBtn.setAttribute('aria-label', s.playing ? (s.buffering ? 'Caricamento… (tocca per fermare)' : 'Pausa') : 'Riproduci');
     seek.value = String(Math.min(sentence, spans.length - 1));
-    chapterLabel.textContent = `${chapter + 1}/${chapters.length}`;
     const rate = getSettings().rate;
-    const remainingChars = chapters[chapter].paragraphs.flat().slice(sentence).reduce((n, t) => n + t.length, 0);
-    remainLabel.textContent = formatMinutes(remainingChars / (CHARS_PER_SEC * rate));
-    remainLabel.title = 'Tempo stimato alla fine del capitolo';
-    sleepBtn.classList.toggle('on', s.sleep !== null);
-    sleepBtn.replaceChildren(icon('moon'), s.sleep === 'chapter' ? 'cap.' : typeof s.sleep === 'number' ? `${Math.max(1, Math.round((s.sleep - Date.now()) / 60000))}′` : '');
+    const all = chapters[chapter].paragraphs.flat();
+    const chars = (list: string[]) => list.reduce((n, t) => n + t.length, 0);
+    elapsedLabel.textContent = formatClock(chars(all.slice(0, sentence)) / (CHARS_PER_SEC * rate));
+    remainLabel.textContent = `-${formatClock(chars(all.slice(sentence)) / (CHARS_PER_SEC * rate))}`;
+    nowTitle.textContent = chapters[chapter].title;
+    const total = meta.chapterSizes.reduce((a, n) => a + n, 0) || 1;
+    const done = meta.chapterSizes.slice(0, chapter).reduce((a, n) => a + n, 0) + sentence;
+    nowMeta.textContent = `Capitolo ${chapter + 1} di ${chapters.length} · ${Math.round((done / total) * 100)}% del libro`;
+    sleepTool.btn.classList.toggle('on', s.sleep !== null);
+    sleepTool.value.textContent =
+      s.sleep === 'chapter' ? 'Fine cap.' : typeof s.sleep === 'number' ? `${Math.max(1, Math.round((s.sleep - Date.now()) / 60000))} min` : 'Timer';
     if (s.finished) {
       errorBar.hidden = false;
       errorBar.textContent = 'Fine del libro 🎉';
       errorBar.style.background = 'var(--accent)';
     } else {
       errorBar.hidden = !s.error;
-      errorBar.textContent = s.error ? `${s.error}. Prova un'altra voce nelle impostazioni.` : '';
+      errorBar.textContent = s.error ? `${s.error.replace(/[.!]+$/, '')}. Puoi scegliere un'altra voce con il pulsante “Voce”.` : '';
       errorBar.style.background = '';
     }
     setMediaPlaying(s.playing);
@@ -159,12 +178,48 @@ export function renderReader(root: HTMLElement, meta: BookMeta, chapters: Chapte
 
   // ---------- Velocità, timer, indice ----------
   function showSpeed() {
-    speedBtn.textContent = `${getSettings().rate.toFixed(2).replace(/\.?0+$/, '')}×`;
+    const s = getSettings();
+    speedTool.value.textContent = formatRate(s.rate);
+    speedTool.btn.classList.toggle('on', Math.abs(s.rate - 1) > 0.001);
+    const names = { neural: 'Neurale', piper: 'AI offline', device: 'Dispositivo' } as const;
+    voiceTool.value.textContent = names[s.engine];
   }
-  function cycleSpeed() {
-    const r = getSettings().rate;
-    const next = SPEEDS.find((sp) => sp > r + 0.001) ?? SPEEDS[0];
-    updateSettings({ rate: next });
+
+  /** Menu velocità: un tocco per scegliere, oppure −/+ per regolare di 0,05. */
+  function openSpeed() {
+    const current = h('div', { class: 'speed-current' });
+    const show = () => (current.textContent = formatRate(getSettings().rate));
+    const step = (d: number) => {
+      const r = Math.min(3, Math.max(0.5, Math.round((getSettings().rate + d) * 100) / 100));
+      updateSettings({ rate: r });
+      show();
+      grid.querySelectorAll('button').forEach((b) => b.classList.toggle('on', Number(b.dataset.v) === r));
+    };
+    const grid = h('div', { class: 'speed-grid' });
+    const body = h(
+      'div',
+      { class: 'speed-sheet' },
+      h('div', { class: 'speed-stepper' },
+        h('button', { class: 'ctrl', 'aria-label': 'Più lento', onclick: () => step(-0.05) }, icon('minus')),
+        current,
+        h('button', { class: 'ctrl', 'aria-label': 'Più veloce', onclick: () => step(0.05) }, icon('plus'))),
+      grid,
+      h('p', { class: 'hint' }, 'Sotto 1× la lettura è più lenta, sopra 1× più veloce. La voce mantiene il suo tono naturale.'),
+    );
+    const dlg = openDialog('Velocità di lettura', body);
+    for (const sp of SPEEDS) {
+      grid.append(
+        h('button', {
+          class: Math.abs(getSettings().rate - sp) < 0.001 ? 'pill on' : 'pill',
+          'data-v': sp,
+          onclick: () => {
+            updateSettings({ rate: sp });
+            dlg.close();
+          },
+        }, formatRate(sp)),
+      );
+    }
+    show();
   }
 
   function openSleep() {
@@ -218,12 +273,13 @@ export function renderReader(root: HTMLElement, meta: BookMeta, chapters: Chapte
     prev: () => player.prevSentence(),
   });
 
-  let lastEngine = `${getSettings().engine}|${getSettings().piperVoice}`;
+  const engineKey = (s: ReturnType<typeof getSettings>) => `${s.engine}|${s.piperVoice}|${s.neuralVoice}`;
+  let lastEngine = engineKey(getSettings());
   const offSettings = onSettingsChange((s) => {
     document.documentElement.style.setProperty('--reader-size', `${s.fontSize}px`);
     engine.updateLive?.({ rate: s.rate, volume: s.volume });
     // Cambio di motore o di voce: fermiamo la lettura (riparte col nuovo motore)
-    const eng = `${s.engine}|${s.piperVoice}`;
+    const eng = engineKey(s);
     if (eng !== lastEngine) {
       lastEngine = eng;
       player.pause();
