@@ -3,6 +3,24 @@ import { deleteBook, listBooks, saveBook } from '../storage';
 import { ACCEPTED, parseBook } from '../parsers';
 import { countSentences } from '../text';
 import { h, hueFrom, icon, toast } from './dom';
+import { getCloudStatus, markDeleted, onCloudStatus, onLibraryChanged, syncNow } from '../cloud/sync';
+import { openAccount } from './account';
+
+/** Riduce la copertina (max 400 px di altezza, JPEG): occupa meno spazio sul dispositivo e nel cloud. */
+async function shrinkCover(dataUrl: string | undefined): Promise<string | undefined> {
+  if (!dataUrl) return undefined;
+  try {
+    const bitmap = await createImageBitmap(await (await fetch(dataUrl)).blob());
+    const scale = Math.min(1, 400 / bitmap.height);
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(bitmap.width * scale);
+    canvas.height = Math.round(bitmap.height * scale);
+    canvas.getContext('2d')!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL('image/jpeg', 0.82);
+  } catch {
+    return dataUrl.length < 250_000 ? dataUrl : undefined;
+  }
+}
 
 export function progressOf(b: BookMeta): number {
   const total = b.chapterSizes.reduce((a, n) => a + n, 0);
@@ -34,7 +52,7 @@ export async function importFiles(files: FileList | File[], onStatus: (msg: stri
         id,
         title: parsed.title,
         author: parsed.author,
-        cover: parsed.cover,
+        cover: await shrinkCover(parsed.cover),
         format: parsed.format,
         addedAt: now,
         lastOpenedAt: now,
@@ -51,10 +69,11 @@ export async function importFiles(files: FileList | File[], onStatus: (msg: stri
     }
   }
   onStatus(null);
+  if (lastId && getCloudStatus().user) syncNow();
   return lastId;
 }
 
-export async function renderLibrary(root: HTMLElement, onOpen: (id: string) => void, onSettings: () => void): Promise<void> {
+export async function renderLibrary(root: HTMLElement, onOpen: (id: string) => void, onSettings: () => void): Promise<() => void> {
   const input = h('input', { type: 'file', accept: ACCEPTED, multiple: true, class: 'sr-only', id: 'file' });
   const status = h('div', { class: 'loading', hidden: true });
   const grid = h('div', { class: 'grid' });
@@ -83,6 +102,7 @@ export async function renderLibrary(root: HTMLElement, onOpen: (id: string) => v
               e.stopPropagation();
               if (confirm(`Eliminare “${b.title}” dalla libreria?`)) {
                 await deleteBook(b.id);
+                markDeleted(b);
                 refresh();
               }
             },
@@ -116,11 +136,12 @@ export async function renderLibrary(root: HTMLElement, onOpen: (id: string) => v
     input.value = '';
   });
 
+  const dropHint = h('p', {});
   const drop = h(
     'div',
     { class: 'dropzone' },
     h('label', { class: 'btn', for: 'file' }, icon('upload'), 'Aggiungi libro'),
-    h('p', {}, 'EPUB, PDF o TXT — oppure trascina qui il file. I libri restano solo sul tuo dispositivo.'),
+    dropHint,
     input,
   );
   drop.addEventListener('dragover', (e) => {
@@ -134,14 +155,33 @@ export async function renderLibrary(root: HTMLElement, onOpen: (id: string) => v
     if (e.dataTransfer?.files) handle(Array.from(e.dataTransfer.files));
   });
 
+  const accountBtn = h('button', { class: 'icon-btn account-btn', 'aria-label': 'Account', title: 'Account', onclick: () => openAccount() }, icon('user'));
+  const syncBadge = h('span', { class: 'sync-badge', hidden: true }, h('div', { class: 'spinner' }), 'Sincronizzo…');
+  const offStatus = onCloudStatus((s) => {
+    accountBtn.classList.toggle('logged', !!s.user);
+    accountBtn.setAttribute('aria-label', s.user ? `Account (${s.user.email})` : 'Accedi');
+    syncBadge.hidden = !s.syncing;
+    dropHint.textContent = s.user
+      ? 'EPUB, PDF o TXT — oppure trascina qui il file. I libri vengono salvati anche nel tuo account.'
+      : 'EPUB, PDF o TXT — oppure trascina qui il file. I libri restano sul dispositivo (accedi per averli ovunque).';
+  });
+  const offLibrary = onLibraryChanged(() => refresh());
+
   root.replaceChildren(
     h(
       'header',
       { class: 'topbar' },
+      h('img', { class: 'logo', src: `${import.meta.env.BASE_URL}icon.svg`, alt: '' }),
       h('h1', { class: 'brand' }, 'Audiolibro'),
+      syncBadge,
+      accountBtn,
       h('button', { class: 'icon-btn', 'aria-label': 'Impostazioni', onclick: onSettings }, icon('settings')),
     ),
     h('main', { class: 'library' }, drop, status, grid),
   );
   await refresh();
+  return () => {
+    offStatus();
+    offLibrary();
+  };
 }

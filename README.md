@@ -14,6 +14,16 @@ Carica un libro (**EPUB, PDF o TXT**) e ascoltalo con la sintesi vocale. È **gr
 - Opzione per tenere lo schermo acceso, così la lettura non si ferma sul telefono.
 - Controlli multimediali dalle cuffie e dalla tastiera, scorciatoie da tastiera (spazio, ←, →).
 
+## Account e sincronizzazione (gratis)
+Tocca l'icona 👤 in alto e crea un account con email e password. Su ogni dispositivo dove accedi ritrovi:
+- i **libri** (salvati in modo privato nel cloud, compressi);
+- il **punto di lettura**: riprendi dalla frase esatta dove eri arrivato;
+- le **impostazioni**: velocità, voce AI, tema, ecc.
+
+La sincronizzazione è automatica quando sei online, e un libro eliminato sparisce da tutti i dispositivi.
+Il backend è un progetto Supabase gratuito (lo schema è in `supabase/migrations/`). Ogni utente vede solo i propri dati, grazie alle regole Row Level Security.
+Il piano gratuito include 1 GB di spazio. Se nessuno usa l'app per circa una settimana, il progetto va in pausa e si riattiva dalla dashboard di Supabase.
+
 ## Voce AI offline (Piper)
 In *Impostazioni › Motore vocale* scegli **Voce AI (offline)** e scarica una voce italiana:
 - **Paola**: femminile, qualità buona (circa 63 MB).

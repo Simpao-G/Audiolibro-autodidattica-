@@ -10,22 +10,25 @@ export default defineConfig({
   plugins: [
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['icon.svg'],
+      includeAssets: ['icon.svg', 'apple-touch-icon.png'],
       manifest: {
         name: 'Audiolibro',
         short_name: 'Audiolibro',
         description: 'Carica un libro e ascoltalo con sintesi vocale',
         lang: 'it',
-        theme_color: '#1f2a44',
-        background_color: '#1f2a44',
+        theme_color: '#151b33',
+        background_color: '#151b33',
         display: 'standalone',
         start_url: '.',
         icons: [
-          { src: 'icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any maskable' },
+          { src: 'icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: 'icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+          { src: 'icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+          { src: 'icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' },
         ],
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,mjs}'],
+        globPatterns: ['**/*.{js,css,html,svg,mjs,png}'],
         // I file del motore vocale AI (~34 MB) non vengono scaricati da tutti:
         // sono salvati in cache solo la prima volta che si usa la voce AI.
         globIgnores: ['wasm/**'],

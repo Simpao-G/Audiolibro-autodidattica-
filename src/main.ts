@@ -7,6 +7,8 @@ import { renderLibrary } from './ui/library';
 import { renderReader } from './ui/reader';
 import { openSettings } from './ui/settings';
 import { toast } from './ui/dom';
+import { initCloud } from './cloud/sync';
+import { openNewPassword } from './ui/account';
 
 const root = document.getElementById('app')!;
 let cleanup: (() => void) | null = null;
@@ -35,7 +37,7 @@ async function route() {
     cleanup = renderReader(root, meta, chapters, engine, () => (location.hash = '#/'));
   } else {
     document.title = 'Audiolibro';
-    await renderLibrary(
+    cleanup = await renderLibrary(
       root,
       (id) => (location.hash = `#/libro/${encodeURIComponent(id)}`),
       () =>
@@ -51,5 +53,6 @@ async function route() {
 
 window.addEventListener('hashchange', route);
 route();
+initCloud(() => openNewPassword());
 requestPersistence();
 registerSW({ immediate: true });

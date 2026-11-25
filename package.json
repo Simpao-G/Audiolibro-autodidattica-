@@ -19,6 +19,7 @@
   "license": "MIT",
   "dependencies": {
     "@mintplex-labs/piper-tts-web": "^1.0.5",
+    "@supabase/supabase-js": "2.119.2",
     "jszip": "^3.10.2",
     "pdfjs-dist": "^6.5.438"
   },
