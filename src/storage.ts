@@ -62,8 +62,24 @@ export async function updateMeta(id: string, patch: Partial<BookMeta>): Promise<
   if (cur) await wrap(s.put({ ...cur, ...patch }));
 }
 
-export function savePosition(id: string, position: Position): Promise<void> {
-  return updateMeta(id, { position, lastOpenedAt: Date.now() });
+type PositionListener = (id: string) => void;
+const positionListeners = new Set<PositionListener>();
+
+/** Avvisa quando una posizione di lettura viene salvata (usato dalla sincronizzazione). */
+export function onPositionSaved(l: PositionListener): () => void {
+  positionListeners.add(l);
+  return () => positionListeners.delete(l);
+}
+
+export async function savePosition(id: string, position: Position): Promise<void> {
+  const now = Date.now();
+  await updateMeta(id, { position, lastOpenedAt: now, positionUpdatedAt: now });
+  positionListeners.forEach((l) => l(id));
+}
+
+/** Sostituisce i metadati di un libro (usato dalla sincronizzazione). */
+export async function putMeta(meta: BookMeta): Promise<void> {
+  await wrap((await store('books', 'readwrite')).put(meta));
 }
 
 export async function deleteBook(id: string): Promise<void> {

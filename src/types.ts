@@ -23,6 +23,10 @@ export interface BookMeta {
   position: Position;
   /** Numero di frasi per capitolo, per calcolare la percentuale. */
   chapterSizes: number[];
+  /** Quando è stata salvata l'ultima posizione (ms): serve a capire quale dispositivo è più avanti. */
+  positionUpdatedAt?: number;
+  /** Account a cui appartiene il libro sincronizzato (assente = libro solo locale). */
+  ownerId?: string;
 }
 
 export interface ParsedBook {

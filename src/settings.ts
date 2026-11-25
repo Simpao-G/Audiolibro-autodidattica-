@@ -27,6 +27,10 @@ export const DEFAULTS: Settings = {
 };
 
 const KEY = 'audiolibro:settings';
+const UPDATED_KEY = 'audiolibro:settingsUpdatedAt';
+
+/** Impostazioni condivise tra dispositivi (le altre dipendono dal dispositivo). */
+export const SHARED_KEYS = ['engine', 'piperVoice', 'rate', 'pitch', 'volume', 'theme', 'fontSize', 'paragraphPause'] as const;
 type Listener = (s: Settings) => void;
 const listeners = new Set<Listener>();
 
@@ -46,14 +50,36 @@ export function getSettings(): Settings {
   return current;
 }
 
-export function updateSettings(patch: Partial<Settings>): void {
+/**
+ * Aggiorna le impostazioni. `fromSync` = valori arrivati dal cloud
+ * (non cambiano la data di modifica locale, così non vengono rimandati indietro).
+ */
+export function updateSettings(patch: Partial<Settings>, opts: { fromSync?: boolean; at?: number } = {}): void {
   current = { ...current, ...patch };
   try {
     localStorage.setItem(KEY, JSON.stringify(current));
+    const touchesShared = Object.keys(patch).some((k) => (SHARED_KEYS as readonly string[]).includes(k));
+    if (opts.fromSync) localStorage.setItem(UPDATED_KEY, String(opts.at ?? Date.now()));
+    else if (touchesShared) localStorage.setItem(UPDATED_KEY, String(Date.now()));
   } catch {
     /* ignora */
   }
   listeners.forEach((l) => l(current));
+}
+
+/** Momento dell'ultima modifica delle impostazioni condivise (0 = mai). */
+export function settingsUpdatedAt(): number {
+  try {
+    return Number(localStorage.getItem(UPDATED_KEY)) || 0;
+  } catch {
+    return 0;
+  }
+}
+
+export function sharedSettings(): Partial<Settings> {
+  const out: Record<string, unknown> = {};
+  for (const k of SHARED_KEYS) out[k] = current[k];
+  return out as Partial<Settings>;
 }
 
 export function onSettingsChange(l: Listener): () => void {

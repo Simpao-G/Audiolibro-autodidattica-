@@ -213,6 +213,33 @@ dialog .body { padding: 16px 20px 24px; overflow-y: auto; max-height: calc(85vh 
 .pill:disabled { opacity: 0.5; }
 .play .spinner { width: 28px; height: 28px; border-width: 3px; border-color: color-mix(in srgb, var(--accent-text) 35%, transparent); border-top-color: var(--accent-text); }
 
+/* ---------- Logo e account ---------- */
+.topbar .logo { width: 34px; height: 34px; border-radius: 9px; flex: none; }
+.account-btn { position: relative; }
+.account-btn.logged::after {
+  content: ''; position: absolute; top: 9px; right: 9px; width: 9px; height: 9px; border-radius: 50%;
+  background: #3fb950; border: 2px solid var(--bg);
+}
+.sync-badge { display: inline-flex; align-items: center; gap: 6px; font-size: 0.78rem; color: var(--muted); }
+.sync-badge .spinner { width: 14px; height: 14px; border-width: 2px; }
+.auth-form { display: flex; flex-direction: column; gap: 12px; }
+.auth-form input {
+  width: 100%; padding: 12px 14px; border-radius: 10px; border: 1px solid var(--border);
+  background: var(--surface-2); color: var(--text); font: inherit;
+}
+.auth-form input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.auth-form .btn { justify-content: center; }
+.form-intro { margin: 0 0 4px; color: var(--muted); font-size: 0.92rem; line-height: 1.4; }
+.form-msg { font-size: 0.88rem; min-height: 1em; line-height: 1.4; }
+.form-msg.err { color: #d93025; }
+.form-msg.ok { color: #2e9a48; }
+.link-btn { background: none; border: 0; color: var(--accent); cursor: pointer; padding: 4px; font-size: 0.9rem; }
+.account-info { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
+.account-row { display: flex; justify-content: space-between; gap: 12px; font-size: 0.92rem; }
+.account-row span { color: var(--muted); }
+.account-row strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row-buttons { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
+
 .toast {
   position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 20;
   background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 10px; font-size: 0.9rem;
