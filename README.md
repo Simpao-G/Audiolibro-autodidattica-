@@ -28,10 +28,9 @@ npm run build    # build di produzione in dist/
 ```
 
 ## Pubblicazione gratuita su GitHub Pages
-1. Su GitHub apri *Settings › Pages › Source* e scegli **GitHub Actions**.
-2. Fai push sul branch `main`: il workflow `.github/workflows/deploy.yml` pubblica l'app su
-   `https://simpao-g.github.io/Audiolibro-autodidattica-/`.
-3. Apri il link dal telefono e scegli "Aggiungi a schermata Home".
+1. A ogni push su `main` il workflow `.github/workflows/deploy.yml` compila l'app e la pubblica sul branch `gh-pages`.
+2. Su GitHub apri *Settings › Pages*. Imposta *Source* su **Deploy from a branch** e scegli il branch **gh-pages** con la cartella **/ (root)**.
+3. L'app sarà su `https://simpao-g.github.io/Audiolibro-autodidattica-/`. Aprila dal telefono e scegli "Aggiungi a schermata Home".
 
 ## Prossimi passi (Fase 2)
 - Voce AI di qualità (Kokoro) che gira nel browser, offline.
