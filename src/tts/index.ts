@@ -1,8 +1,8 @@
-import { getSettings } from '../settings';
+import { getSettings, onSettingsChange } from '../settings';
 import type { SpeakOptions, TtsEngine, VoiceInfo } from './engine';
 import { NeuralEngine } from './neural';
 import { PiperEngine } from './piper';
-import { SupertonicEngine } from './supertonic';
+import { DetailedError, SupertonicEngine } from './supertonic';
 import { WebSpeechEngine } from './webspeech';
 
 export const deviceEngine = new WebSpeechEngine();
@@ -12,6 +12,17 @@ export const supertonicEngine = new SupertonicEngine(() => getSettings().superto
 
 /** Motore attivo secondo le impostazioni (voci del dispositivo o voce AI Piper). */
 class SwitchEngine implements TtsEngine {
+  /** La voce AI HD ha dato un errore grave: per questa sessione si usa la voce del dispositivo. */
+  private hdBroken = false;
+
+  constructor() {
+    onSettingsChange((s) => {
+      if (s.engine === 'supertonic' && this.lastSeen !== 'supertonic') this.hdBroken = false;
+      this.lastSeen = s.engine;
+    });
+  }
+  private lastSeen = getSettings().engine;
+
   private get current(): TtsEngine {
     const e = getSettings().engine;
     if (e === 'supertonic') return supertonicEngine;
@@ -26,8 +37,18 @@ class SwitchEngine implements TtsEngine {
   getVoices(): Promise<VoiceInfo[]> {
     return this.current.getVoices();
   }
-  speak(text: string, opts: SpeakOptions) {
-    return this.current.speak(text, opts);
+  async speak(text: string, opts: SpeakOptions): Promise<void> {
+    const cur = this.current;
+    if (cur === supertonicEngine && this.hdBroken) return deviceEngine.speak(text, opts);
+    try {
+      return await cur.speak(text, opts);
+    } catch (e) {
+      // Se la voce AI HD si guasta su questo dispositivo, la lettura continua con la voce del dispositivo
+      if (cur !== supertonicEngine || !(e instanceof DetailedError) || !deviceEngine.isSupported()) throw e;
+      this.hdBroken = true;
+      window.dispatchEvent(new CustomEvent('tts-fallback', { detail: { message: e.message, detail: e.detail } }));
+      return deviceEngine.speak(text, opts);
+    }
   }
   stop() {
     deviceEngine.stop();
@@ -36,6 +57,7 @@ class SwitchEngine implements TtsEngine {
     supertonicEngine.stop();
   }
   prefetch(texts: string[]) {
+    if (this.hdBroken && this.current === supertonicEngine) return;
     this.current.prefetch?.(texts);
   }
   unlock() {

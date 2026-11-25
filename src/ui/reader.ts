@@ -167,17 +167,55 @@ export function renderReader(root: HTMLElement, meta: BookMeta, chapters: Chapte
     sleepTool.value.textContent =
       s.sleep === 'chapter' ? 'Fine cap.' : typeof s.sleep === 'number' ? `${Math.max(1, Math.round((s.sleep - Date.now()) / 60000))} min` : 'Timer';
     if (s.finished) {
-      errorBar.hidden = false;
-      errorBar.textContent = 'Fine del libro 🎉';
-      errorBar.style.background = 'var(--accent)';
+      if (fallbackInfo) showBar(`Fine del libro 🎉 · ${fallbackInfo.message}`, fallbackInfo.detail, true);
+      else {
+        showBar('Fine del libro 🎉');
+        errorBar.style.background = 'var(--accent)';
+      }
     } else {
-      errorBar.hidden = !s.error;
-      errorBar.textContent = s.error ? `${s.error.replace(/[.!]+$/, '')}. Puoi scegliere un'altra voce con il pulsante “Voce”.` : '';
+      errorBar.hidden = !s.error && !fallbackInfo;
       errorBar.style.background = '';
+      if (s.error) showBar(`${s.error.replace(/[.!]+$/, '')}. Puoi scegliere un'altra voce con il pulsante “Voce”.`, s.errorDetail);
+      else if (fallbackInfo) showBar(fallbackInfo.message, fallbackInfo.detail, true);
+      else errorBar.replaceChildren();
     }
     setMediaPlaying(s.playing);
     if (getSettings().keepAwake) setKeepAwake(s.playing);
   }
+
+  /** Barra messaggi con pulsante "Copia dettagli" (per segnalare il problema). */
+  function showBar(text: string, detail?: string, info = false) {
+    errorBar.hidden = false;
+    errorBar.style.background = info ? 'var(--surface-2)' : '';
+    errorBar.style.color = info ? 'var(--text)' : '';
+    const kids: Node[] = [document.createTextNode(text)];
+    if (detail) {
+      kids.push(
+        h('button', {
+          class: 'copy-btn',
+          onclick: async () => {
+            const report = `${text}\n---\n${detail}`;
+            try {
+              await navigator.clipboard.writeText(report);
+              toast('Dettagli copiati: incollali nella chat');
+            } catch {
+              prompt('Copia questi dettagli:', report);
+            }
+          },
+        }, 'Copia dettagli'),
+      );
+    }
+    errorBar.replaceChildren(...kids);
+  }
+
+  // La voce AI HD si è guastata: la lettura continua con la voce del dispositivo
+  let fallbackInfo: { message: string; detail: string } | null = null;
+  const onFallback = (e: Event) => {
+    const d = (e as CustomEvent<{ message: string; detail: string }>).detail;
+    fallbackInfo = { message: `${d.message.replace(/[.!]+$/, '')}. Per ora continuo con la voce del dispositivo.`, detail: d.detail };
+    update(player.state);
+  };
+  window.addEventListener('tts-fallback', onFallback);
 
   // ---------- Velocità, timer, indice ----------
   function showSpeed() {
@@ -303,6 +341,7 @@ export function renderReader(root: HTMLElement, meta: BookMeta, chapters: Chapte
     offSettings();
     clearInterval(tick);
     document.removeEventListener('keydown', onKey);
+    window.removeEventListener('tts-fallback', onFallback);
     window.removeEventListener('wheel', markScroll);
     window.removeEventListener('touchmove', markScroll);
     savePosition(meta.id, player.state.position).catch(() => {});

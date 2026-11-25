@@ -11,6 +11,8 @@ export interface PlayerState {
   position: Position;
   sleep: SleepMode;
   error: string | null;
+  /** Dettagli tecnici dell'errore (da copiare per la segnalazione). */
+  errorDetail?: string;
   finished: boolean;
 }
 
@@ -69,7 +71,7 @@ export class Player {
     if (this.state.finished) this.state.position = { chapter: 0, sentence: 0 };
     // Siamo dentro il tocco dell'utente: sblocca l'audio (necessario su iOS)
     this.deps.engine.unlock?.();
-    this.set({ playing: true, buffering: true, error: null, finished: false });
+    this.set({ playing: true, buffering: true, error: null, errorDetail: undefined, finished: false });
     this.run(++this.gen);
   }
 
@@ -208,7 +210,8 @@ export class Player {
       } catch (e) {
         if (gen !== this.gen) return;
         this.gen++;
-        this.set({ playing: false, buffering: false, error: e instanceof Error ? e.message : String(e) });
+        const detail = (e as { detail?: string })?.detail ?? (e instanceof Error ? e.stack?.slice(0, 600) : undefined);
+        this.set({ playing: false, buffering: false, error: e instanceof Error ? e.message : String(e), errorDetail: detail });
         return;
       } finally {
         clearTimeout(slow);

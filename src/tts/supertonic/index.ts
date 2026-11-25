@@ -13,6 +13,22 @@ export const SUPERTONIC_VOICES: { id: VoiceId; name: string; description: string
 
 type Pending = { resolve: (r: StResponse) => void; reject: (e: Error) => void };
 
+const PREF_KEY = 'audiolibro:supertonicWasm';
+const prefersWasm = () => {
+  try {
+    return localStorage.getItem(PREF_KEY) === '1';
+  } catch {
+    return false;
+  }
+};
+
+/** Errore con dettagli tecnici da copiare (per la segnalazione). */
+export class DetailedError extends Error {
+  constructor(message: string, public detail: string) {
+    super(message);
+  }
+}
+
 /**
  * Voce AI HD offline: Supertonic 3, modello neurale (~380 MB) eseguito nel browser in un Web Worker.
  * Qualità molto più alta di Piper; dopo il primo download funziona senza internet.
@@ -75,7 +91,7 @@ export class SupertonicEngine extends ClipEngine {
         throw new Error('La voce AI HD non è ancora scaricata: apri “Voce” e premi “Scarica”');
       }
       const wasmBase = new URL(`${import.meta.env.BASE_URL}wasm/`, location.href).href;
-      this.ready = this.call({ type: 'init', wasmBase })
+      this.ready = this.call({ type: 'init', wasmBase, preferWasm: prefersWasm() })
         .then((r) => {
           if (r.type === 'ready') this.backend = r.backend;
         })
@@ -91,6 +107,17 @@ export class SupertonicEngine extends ClipEngine {
     const res = await this.call({ type: 'predict', text, voice: this.getVoiceId(), steps: this.steps });
     if (res.type !== 'audio') throw new Error('Risposta inattesa dalla voce AI HD');
     this.lastMs = res.ms;
+    if (res.backend !== this.backend) {
+      // La scheda grafica ha dato problemi: da ora questo dispositivo usa il processore
+      if (this.backend === 'webgpu' && res.backend === 'wasm') {
+        try {
+          localStorage.setItem(PREF_KEY, '1');
+        } catch {
+          /* ignora */
+        }
+      }
+      this.backend = res.backend;
+    }
     // Qualità adattiva: se il dispositivo genera troppo lentamente rispetto alla durata
     // dell'audio, riduce un po' i passi (mai sotto 6); se è veloce, torna alla massima qualità.
     const ratio = res.ms / Math.max(1, res.audioMs);
@@ -106,12 +133,16 @@ export class SupertonicEngine extends ClipEngine {
         const p = this.pending.get(e.data.id);
         if (!p) return;
         this.pending.delete(e.data.id);
-        if (e.data.type === 'error') p.reject(new Error(e.data.message));
+        if (e.data.type === 'error') p.reject(new DetailedError(e.data.message, `${e.data.detail}\n${navigator.userAgent}`));
         else p.resolve(e.data);
       };
       this.worker.onerror = (e) => {
         e.preventDefault();
-        const err = new Error(`Errore della voce AI HD: ${e.message || 'memoria insufficiente o browser non compatibile'}`);
+        // Il worker si è chiuso di colpo: quasi sempre per mancanza di memoria (iPhone/iPad)
+        const err = new DetailedError(
+          'La voce AI HD si è interrotta (probabilmente memoria insufficiente su questo dispositivo): chiudi le altre schede e riprova, oppure usa la voce “AI leggera” o “Dispositivo”',
+          `worker crash: ${e.message || 'nessun messaggio'}; motore=${this.backend ?? '?'}\n${navigator.userAgent}`,
+        );
         for (const p of this.pending.values()) p.reject(err);
         this.pending.clear();
         this.resetWorker();

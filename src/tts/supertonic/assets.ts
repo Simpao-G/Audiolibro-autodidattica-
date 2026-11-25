@@ -21,12 +21,24 @@ export const FILES: Record<string, number> = {
 export const TOTAL_MB = Math.round(Object.values(FILES).reduce((a, b) => a + b, 0) / 1e6);
 
 export const fileUrl = (path: string) => REPO_BASE + path;
+/** Segnalino salvato solo quando un file è stato scaricato per intero (contiene i byte ricevuti). */
+const okUrl = (path: string) => `${fileUrl(path)}?scaricato=ok`;
+/** File di cui conosciamo la dimensione esatta (le voci variano di poco). */
+const exactSize = (path: string) => !path.startsWith('voice_styles/');
+
+/** Il file è in cache e completo? */
+async function isComplete(cache: Cache, path: string): Promise<boolean> {
+  const [file, ok] = await Promise.all([cache.match(fileUrl(path)), cache.match(okUrl(path))]);
+  if (!file || !ok) return false;
+  const bytes = Number(await ok.text());
+  return exactSize(path) ? bytes === FILES[path] : bytes > 1000;
+}
 
 export async function isDownloaded(): Promise<boolean> {
   if (!('caches' in self)) return false;
   try {
     const cache = await caches.open(CACHE_NAME);
-    for (const path of Object.keys(FILES)) if (!(await cache.match(fileUrl(path)))) return false;
+    for (const path of Object.keys(FILES)) if (!(await isComplete(cache, path))) return false;
     return true;
   } catch {
     return false;
@@ -40,7 +52,7 @@ export async function download(onProgress?: (p: number) => void, signal?: AbortS
   let done = 0;
   for (const [path, size] of Object.entries(FILES)) {
     const url = fileUrl(path);
-    if (await cache.match(url)) {
+    if (await isComplete(cache, path)) {
       done += size;
       onProgress?.(done / total);
       continue;
@@ -58,6 +70,12 @@ export async function download(onProgress?: (p: number) => void, signal?: AbortS
       },
     });
     await cache.put(url, new Response(res.body.pipeThrough(counter), { headers: { 'Content-Type': res.headers.get('Content-Type') ?? 'application/octet-stream' } }));
+    // Download interrotto o incompleto: lo scartiamo, verrà riscaricato
+    if (exactSize(path) && loaded !== size) {
+      await cache.delete(url);
+      throw new Error(`file incompleto (${path}: ${loaded} di ${size} byte). Riprova con una connessione stabile, tenendo l’app aperta`);
+    }
+    await cache.put(okUrl(path), new Response(String(loaded)));
     done += size;
     onProgress?.(done / total);
   }
