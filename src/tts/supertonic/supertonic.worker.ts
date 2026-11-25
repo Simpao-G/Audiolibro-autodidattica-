@@ -7,13 +7,13 @@ import { readFile } from './assets';
 import { preprocess, toIds } from './text';
 
 export type StRequest =
-  | { type: 'init'; id: number; wasmBase: string }
+  | { type: 'init'; id: number; wasmBase: string; preferWasm: boolean }
   | { type: 'predict'; id: number; text: string; voice: string; steps: number };
 
 export type StResponse =
   | { type: 'ready'; id: number; backend: string }
-  | { type: 'audio'; id: number; wav: Blob; ms: number; audioMs: number }
-  | { type: 'error'; id: number; message: string };
+  | { type: 'audio'; id: number; wav: Blob; ms: number; audioMs: number; backend: string }
+  | { type: 'error'; id: number; message: string; detail: string };
 
 interface Config {
   ae: { sample_rate: number; base_chunk_size: number };
@@ -46,35 +46,70 @@ async function hasWebGpu(): Promise<boolean> {
   }
 }
 
-async function loadSession(path: string): Promise<ort.InferenceSession> {
+const MODELS = ['duration_predictor', 'text_encoder', 'vector_estimator', 'vocoder'] as const;
+
+async function createSession(path: string, ep: 'webgpu' | 'wasm'): Promise<ort.InferenceSession> {
+  // Il modello va direttamente dalla cache al motore, senza copie intermedie
   const model = new Uint8Array(await (await readFile(path)).arrayBuffer());
-  if (backend === 'webgpu') {
-    try {
-      return await ort.InferenceSession.create(model, { executionProviders: ['webgpu'], graphOptimizationLevel: 'all' });
-    } catch (e) {
-      console.warn('WebGPU non disponibile per', path, e);
-      backend = 'wasm';
-    }
-  }
-  return ort.InferenceSession.create(model, { executionProviders: ['wasm'], graphOptimizationLevel: 'all' });
+  return ort.InferenceSession.create(model, {
+    executionProviders: [ep],
+    graphOptimizationLevel: 'all',
+    // Meno memoria di picco (importante su iPhone/iPad)
+    enableCpuMemArena: false,
+    enableMemPattern: ep !== 'wasm',
+  });
 }
 
-async function init(id: number, wasmBase: string) {
+async function releaseSessions() {
+  if (!sessions) return;
+  const all = Object.values(sessions);
+  sessions = null;
+  for (const s of all) await s.release().catch(() => {});
+}
+
+/** Carica i 4 modelli, uno alla volta, sul motore indicato (con ripiego sul processore). */
+async function loadAll(ep: 'webgpu' | 'wasm') {
+  await releaseSessions();
+  backend = ep;
+  const loaded: ort.InferenceSession[] = [];
+  try {
+    for (const m of MODELS) loaded.push(await createSession(`onnx/${m}.onnx`, backend));
+  } catch (e) {
+    for (const s of loaded) await s.release().catch(() => {});
+    if (backend === 'webgpu') return loadAll('wasm');
+    throw e;
+  }
+  const [dp, te, ve, voc] = loaded;
+  sessions = { dp, te, ve, voc };
+}
+
+async function init(id: number, wasmBase: string, preferWasm: boolean) {
   if (!sessions) {
     ort.env.wasm.wasmPaths = wasmBase;
     // Più thread solo se la pagina lo consente (cross-origin isolation)
     ort.env.wasm.numThreads = self.crossOriginIsolated ? Math.min(4, navigator.hardwareConcurrency || 1) : 1;
-    backend = (await hasWebGpu()) ? 'webgpu' : 'wasm';
     cfg = (await (await readFile('onnx/tts.json')).json()) as Config;
     indexer = (await (await readFile('onnx/unicode_indexer.json')).json()) as number[];
-    // Una sessione alla volta: limita i picchi di memoria sui telefoni
-    const dp = await loadSession('onnx/duration_predictor.onnx');
-    const te = await loadSession('onnx/text_encoder.onnx');
-    const ve = await loadSession('onnx/vector_estimator.onnx');
-    const voc = await loadSession('onnx/vocoder.onnx');
-    sessions = { dp, te, ve, voc };
+    await loadAll(!preferWasm && (await hasWebGpu()) ? 'webgpu' : 'wasm');
   }
   post({ type: 'ready', id, backend });
+}
+
+/** Trasforma gli errori tecnici in un messaggio comprensibile. */
+function friendly(e: unknown): string {
+  const raw = e instanceof Error ? e.message : String(e);
+  if (/protobuf|parsing failed|invalid model|Unexpected end/i.test(raw)) {
+    return 'I file della voce AI HD sono danneggiati (forse il download si era interrotto): apri “Voce”, premi “Elimina” e poi scaricala di nuovo tenendo l’app aperta';
+  }
+  if (/memory|allocat|bad_alloc|RangeError|Aborted|OOM/i.test(raw)) {
+    return 'Memoria insufficiente su questo dispositivo per la voce AI HD: chiudi le altre schede e riprova, oppure usa la voce “AI leggera” o “Dispositivo”';
+  }
+  return `La voce AI HD ha avuto un problema (${raw.slice(0, 120)})`;
+}
+
+function detailOf(e: unknown): string {
+  const err = e instanceof Error ? `${e.name}: ${e.message}\n${(e.stack ?? '').split('\n').slice(0, 4).join('\n')}` : String(e);
+  return `motore=${backend}; ${err}`.slice(0, 1500);
 }
 
 async function getStyle(voice: string): Promise<Style> {
@@ -125,6 +160,18 @@ function wav16(pcm: Float32Array, sampleRate: number): Blob {
 }
 
 async function predict(id: number, text: string, voice: string, steps: number) {
+  try {
+    await predictOnce(id, text, voice, steps);
+  } catch (e) {
+    // La scheda grafica ha dato errore durante l'uso: passa al processore e riprova una volta
+    if (backend !== 'webgpu') throw e;
+    console.warn('WebGPU ha dato errore, passo al processore', e);
+    await loadAll('wasm');
+    await predictOnce(id, text, voice, steps);
+  }
+}
+
+async function predictOnce(id: number, text: string, voice: string, steps: number) {
   if (!sessions || !cfg) throw new Error('Voce AI HD non caricata');
   const t0 = performance.now();
   const ids = toIds(preprocess(text, 'it'), indexer);
@@ -169,12 +216,12 @@ async function predict(id: number, text: string, voice: string, steps: number) {
   // 5) Vocoder: dallo spazio latente all'audio
   const vocOut = await sessions.voc.run({ latent: xt });
   const pcm = (vocOut.wav_tts.data as Float32Array).subarray(0, wavLen);
-  post({ type: 'audio', id, wav: wav16(pcm, sr), ms: Math.round(performance.now() - t0), audioMs: Math.round((pcm.length / sr) * 1000) });
+  post({ type: 'audio', id, wav: wav16(pcm, sr), ms: Math.round(performance.now() - t0), audioMs: Math.round((pcm.length / sr) * 1000), backend });
 }
 
 ctx.onmessage = (e: MessageEvent<StRequest>) => {
   const msg = e.data;
   chain = chain
-    .then(() => (msg.type === 'init' ? init(msg.id, msg.wasmBase) : predict(msg.id, msg.text, msg.voice, msg.steps)))
-    .catch((err: unknown) => post({ type: 'error', id: msg.id, message: err instanceof Error ? err.message : String(err) }));
+    .then(() => (msg.type === 'init' ? init(msg.id, msg.wasmBase, msg.preferWasm) : predict(msg.id, msg.text, msg.voice, msg.steps)))
+    .catch((err: unknown) => post({ type: 'error', id: msg.id, message: friendly(err), detail: detailOf(err) }));
 };
