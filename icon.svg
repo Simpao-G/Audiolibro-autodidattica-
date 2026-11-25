@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0.6" y2="1">
+      <stop offset="0" stop-color="#2e3d6e"/>
+      <stop offset="1" stop-color="#151b33"/>
+    </linearGradient>
+    <linearGradient id="pageL" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#fbf3e4"/>
+      <stop offset="1" stop-color="#e9dcc3"/>
+    </linearGradient>
+    <linearGradient id="pageR" x1="1" y1="0" x2="0" y2="0">
+      <stop offset="0" stop-color="#fbf3e4"/>
+      <stop offset="1" stop-color="#e2d2b4"/>
+    </linearGradient>
+    <linearGradient id="wave" gradientUnits="userSpaceOnUse" x1="0" y1="250" x2="0" y2="100">
+      <stop offset="0" stop-color="#ffb84d"/>
+      <stop offset="1" stop-color="#f07a2a"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.42" r="0.5">
+      <stop offset="0" stop-color="#f2a33a" stop-opacity="0.28"/>
+      <stop offset="1" stop-color="#f2a33a" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect id="sfondo" width="512" height="512" rx="112" fill="url(#bg)"/>
+  <circle cx="256" cy="200" r="200" fill="url(#glow)"/>
+
+  <!-- Onda sonora (barre) che esce dalle pagine -->
+  <g stroke="url(#wave)" stroke-width="22" stroke-linecap="round">
+    <path d="M136 196 V208"/>
+    <path d="M172 172 V232"/>
+    <path d="M208 140 V244"/>
+    <path d="M244 104 V250"/>
+    <path d="M280 124 V250"/>
+    <path d="M316 152 V244"/>
+    <path d="M352 178 V230"/>
+    <path d="M388 198 V210"/>
+  </g>
+
+  <!-- Libro aperto -->
+  <g>
+    <path d="M256 282 C214 256 160 248 104 258 L104 392 C160 382 214 390 256 416 Z" fill="#0d1226" opacity="0.35" transform="translate(0 10)"/>
+    <path d="M256 282 C214 256 160 248 104 258 L104 392 C160 382 214 390 256 416 Z" fill="url(#pageL)"/>
+    <path d="M256 282 C298 256 352 248 408 258 L408 392 C352 382 298 390 256 416 Z" fill="url(#pageR)"/>
+    <!-- righe di testo -->
+    <g stroke="#c9b48f" stroke-width="7" stroke-linecap="round" opacity="0.7">
+      <path d="M132 292 C166 286 196 288 226 300"/>
+      <path d="M132 318 C166 312 196 314 226 326"/>
+      <path d="M132 344 C166 338 196 340 226 352"/>
+      <path d="M286 300 C316 288 346 286 380 292"/>
+      <path d="M286 326 C316 314 346 312 380 318"/>
+      <path d="M286 352 C316 340 346 338 380 344"/>
+    </g>
+    <path d="M256 282 L256 416" stroke="#b89d70" stroke-width="5"/>
+    <path d="M104 392 C160 382 214 390 256 416 C298 390 352 382 408 392" fill="none" stroke="#f07a2a" stroke-width="10" stroke-linecap="round"/>
+  </g>
+</svg>
