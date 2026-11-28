@@ -3,11 +3,11 @@
 // Pipeline come nel demo ufficiale: durata → codifica testo → flow matching (N passi) → vocoder.
 // Build di ONNX Runtime con WebGPU (scheda grafica) e ripiego sul processore (WASM)
 import * as ort from 'onnxruntime-web/webgpu';
-import { readFile } from './assets';
+import { readFile as readAsset, type Variant } from './assets';
 import { preprocess, toIds } from './text';
 
 export type StRequest =
-  | { type: 'init'; id: number; wasmBase: string; preferWasm: boolean }
+  | { type: 'init'; id: number; wasmBase: string; preferWasm: boolean; variant: Variant }
   | { type: 'predict'; id: number; text: string; voice: string; steps: number };
 
 export type StResponse =
@@ -33,6 +33,9 @@ const styles = new Map<string, Style>();
 let chain: Promise<unknown> = Promise.resolve();
 
 const post = (m: StResponse) => ctx.postMessage(m);
+
+let variant: Variant = 'full';
+const readFile = (path: string) => readAsset(variant, path);
 
 let backend: 'webgpu' | 'wasm' = 'wasm';
 
@@ -83,7 +86,9 @@ async function loadAll(ep: 'webgpu' | 'wasm') {
   sessions = { dp, te, ve, voc };
 }
 
-async function init(id: number, wasmBase: string, preferWasm: boolean) {
+async function init(id: number, wasmBase: string, preferWasm: boolean, v: Variant) {
+  if (sessions && v !== variant) await releaseSessions();
+  variant = v;
   if (!sessions) {
     ort.env.wasm.wasmPaths = wasmBase;
     // Più thread solo se la pagina lo consente (cross-origin isolation)
@@ -222,6 +227,6 @@ async function predictOnce(id: number, text: string, voice: string, steps: numbe
 ctx.onmessage = (e: MessageEvent<StRequest>) => {
   const msg = e.data;
   chain = chain
-    .then(() => (msg.type === 'init' ? init(msg.id, msg.wasmBase, msg.preferWasm) : predict(msg.id, msg.text, msg.voice, msg.steps)))
+    .then(() => (msg.type === 'init' ? init(msg.id, msg.wasmBase, msg.preferWasm, msg.variant) : predict(msg.id, msg.text, msg.voice, msg.steps)))
     .catch((err: unknown) => post({ type: 'error', id: msg.id, message: friendly(err), detail: detailOf(err) }));
 };

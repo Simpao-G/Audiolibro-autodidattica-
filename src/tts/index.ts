@@ -4,6 +4,7 @@ import { NeuralEngine } from './neural';
 import { PiperEngine } from './piper';
 import { DetailedError, SupertonicEngine } from './supertonic';
 import { WebSpeechEngine } from './webspeech';
+import { NotDownloadedError } from './guard';
 
 export const deviceEngine = new WebSpeechEngine();
 export const piperEngine = new PiperEngine(() => getSettings().piperVoice);
@@ -12,14 +13,20 @@ export const supertonicEngine = new SupertonicEngine(() => getSettings().superto
 
 /** Motore attivo secondo le impostazioni (voci del dispositivo o voce AI Piper). */
 class SwitchEngine implements TtsEngine {
-  /** La voce AI HD ha dato un errore grave: per questa sessione si usa la voce del dispositivo. */
-  private hdBroken = false;
+  /** Il motore scelto non funziona qui (guasto o non scaricato): per ora si usa la voce del dispositivo. */
+  private broken: TtsEngine | null = null;
 
   constructor() {
     onSettingsChange((s) => {
-      if (s.engine === 'supertonic' && this.lastSeen !== 'supertonic') this.hdBroken = false;
+      // Cambiando motore (o dopo un download) si riprova quello scelto
+      if (s.engine !== this.lastSeen) this.broken = null;
       this.lastSeen = s.engine;
     });
+  }
+
+  /** Da chiamare dopo aver scaricato una voce: il motore scelto torna disponibile. */
+  resetFallback() {
+    this.broken = null;
   }
   private lastSeen = getSettings().engine;
 
@@ -39,14 +46,20 @@ class SwitchEngine implements TtsEngine {
   }
   async speak(text: string, opts: SpeakOptions): Promise<void> {
     const cur = this.current;
-    if (cur === supertonicEngine && this.hdBroken) return deviceEngine.speak(text, opts);
+    if (cur === this.broken) return deviceEngine.speak(text, opts);
     try {
       return await cur.speak(text, opts);
     } catch (e) {
-      // Se la voce AI HD si guasta su questo dispositivo, la lettura continua con la voce del dispositivo
-      if (cur !== supertonicEngine || !(e instanceof DetailedError) || !deviceEngine.isSupported()) throw e;
-      this.hdBroken = true;
-      window.dispatchEvent(new CustomEvent('tts-fallback', { detail: { message: e.message, detail: e.detail } }));
+      // Voce AI non scaricata qui, o guasta su questo dispositivo: la lettura continua con la voce del dispositivo
+      const recoverable = e instanceof NotDownloadedError || (cur === supertonicEngine && e instanceof DetailedError);
+      if (!recoverable || cur === deviceEngine || !deviceEngine.isSupported()) throw e;
+      this.broken = cur;
+      const message =
+        e instanceof NotDownloadedError
+          ? `${e.message}: per ora leggo con la voce del dispositivo. Puoi scaricarla dal pulsante “Voce”`
+          : `${(e as Error).message.replace(/[.!]+$/, '')}. Per ora continuo con la voce del dispositivo`;
+      const detail = e instanceof DetailedError ? e.detail : `${(e as Error).message}\n${navigator.userAgent}`;
+      window.dispatchEvent(new CustomEvent('tts-fallback', { detail: { message, detail } }));
       return deviceEngine.speak(text, opts);
     }
   }
@@ -57,7 +70,7 @@ class SwitchEngine implements TtsEngine {
     supertonicEngine.stop();
   }
   prefetch(texts: string[]) {
-    if (this.hdBroken && this.current === supertonicEngine) return;
+    if (this.current === this.broken) return;
     this.current.prefetch?.(texts);
   }
   unlock() {
@@ -68,4 +81,4 @@ class SwitchEngine implements TtsEngine {
   }
 }
 
-export const engine: TtsEngine = new SwitchEngine();
+export const engine = new SwitchEngine();

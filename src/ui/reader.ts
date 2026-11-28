@@ -7,6 +7,7 @@ import { clearMediaSession, setKeepAwake, setMediaMetadata, setMediaPlaying, set
 import { h, icon, openDialog, toast } from './dom';
 import { openSettings, SPEEDS } from './settings';
 import { supertonicEngine } from '../tts';
+import { hdCrashedHere, isMobileDevice } from '../tts/guard';
 
 /** Caratteri al secondo letti a velocità 1× (stima per il tempo rimanente). */
 const CHARS_PER_SEC = 14;
@@ -33,7 +34,8 @@ export function renderReader(root: HTMLElement, meta: BookMeta, chapters: Chapte
   });
   updateMeta(meta.id, { lastOpenedAt: Date.now() }).catch(() => {});
   // Voce AI HD: carica il modello subito, così la prima frase parte prima
-  if (getSettings().engine === 'supertonic') supertonicEngine.preload();
+  // (solo sui computer: su telefoni e tablet il caricamento parte quando premi Play)
+  if (getSettings().engine === 'supertonic' && !isMobileDevice() && !hdCrashedHere()) supertonicEngine.preload();
 
   // ---------- Elementi ----------
   const text = h('article', { class: 'text', 'aria-live': 'off' });
@@ -212,7 +214,7 @@ export function renderReader(root: HTMLElement, meta: BookMeta, chapters: Chapte
   let fallbackInfo: { message: string; detail: string } | null = null;
   const onFallback = (e: Event) => {
     const d = (e as CustomEvent<{ message: string; detail: string }>).detail;
-    fallbackInfo = { message: `${d.message.replace(/[.!]+$/, '')}. Per ora continuo con la voce del dispositivo.`, detail: d.detail };
+    fallbackInfo = { message: `${d.message.replace(/[.!]+$/, '')}.`, detail: d.detail };
     update(player.state);
   };
   window.addEventListener('tts-fallback', onFallback);

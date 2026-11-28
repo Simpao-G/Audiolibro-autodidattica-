@@ -1,9 +1,29 @@
 import { ClipEngine } from '../clip';
 import type { VoiceInfo } from '../engine';
-import { download, isDownloaded, remove, TOTAL_MB, VOICE_IDS, type VoiceId } from './assets';
+import { download, isDownloaded, remove, VARIANT_MB, VOICE_IDS, type Variant, type VoiceId } from './assets';
+import { clearHdLoading, hdCrashedHere, isMobileDevice, markHdLoading, NotDownloadedError } from '../guard';
 import type { StRequest, StResponse } from './supertonic.worker';
 
-export { TOTAL_MB as SUPERTONIC_MB };
+export { VARIANT_MB, type Variant };
+
+const VARIANT_KEY = 'audiolibro:supertonicVariant';
+/** Variante scelta per questo dispositivo: telefoni/tablet → leggera, computer → completa. */
+export function getVariant(): Variant {
+  try {
+    const v = localStorage.getItem(VARIANT_KEY);
+    if (v === 'full' || v === 'lite') return v;
+  } catch {
+    /* ignora */
+  }
+  return isMobileDevice() ? 'lite' : 'full';
+}
+export function setVariant(v: Variant): void {
+  try {
+    localStorage.setItem(VARIANT_KEY, v);
+  } catch {
+    /* ignora */
+  }
+}
 
 export const SUPERTONIC_VOICES: { id: VoiceId; name: string; description: string }[] = VOICE_IDS.map((id) => ({
   id,
@@ -58,13 +78,13 @@ export class SupertonicEngine extends ClipEngine {
     return SUPERTONIC_VOICES.map((v) => ({ id: v.id, name: v.name, lang: 'it-IT', quality: 'alta', local: true }));
   }
 
-  isDownloaded(): Promise<boolean> {
-    return isDownloaded();
+  isDownloaded(v: Variant = getVariant()): Promise<boolean> {
+    return isDownloaded(v);
   }
 
   /** Scarica il modello (una volta sola). onProgress: da 0 a 1. */
-  async download(onProgress?: (p: number) => void): Promise<void> {
-    await download(onProgress);
+  async download(onProgress?: (p: number) => void, v: Variant = getVariant()): Promise<void> {
+    await download(v, onProgress);
   }
 
   /** Carica il modello in anticipo (es. all'apertura di un libro), se è già scaricato. */
@@ -72,9 +92,9 @@ export class SupertonicEngine extends ClipEngine {
     this.prepare().catch(() => {});
   }
 
-  async removeModel(): Promise<void> {
+  async removeModel(v: Variant = getVariant()): Promise<void> {
     this.resetWorker();
-    await remove();
+    await remove(v);
   }
 
   protected voiceKey(): string {
@@ -87,15 +107,26 @@ export class SupertonicEngine extends ClipEngine {
 
   protected async prepare(): Promise<void> {
     if (!this.ready) {
-      if (!(await isDownloaded())) {
-        throw new Error('La voce AI HD non è ancora scaricata: apri “Voce” e premi “Scarica”');
+      const variant = getVariant();
+      if (!(await isDownloaded(variant))) {
+        throw new NotDownloadedError('La voce AI HD non è scaricata su questo dispositivo');
+      }
+      if (hdCrashedHere()) {
+        throw new DetailedError(
+          'La voce AI HD aveva fatto chiudere la pagina per mancanza di memoria su questo dispositivo, quindi è in pausa (puoi riprovare da “Voce”)',
+          `crash precedente durante il caricamento; variante=${variant}\n${navigator.userAgent}`,
+        );
       }
       const wasmBase = new URL(`${import.meta.env.BASE_URL}wasm/`, location.href).href;
-      this.ready = this.call({ type: 'init', wasmBase, preferWasm: prefersWasm() })
+      // Se la pagina crolla durante il caricamento, al prossimo avvio lo sapremo (vedi guard.ts)
+      markHdLoading();
+      this.ready = this.call({ type: 'init', wasmBase, preferWasm: prefersWasm(), variant })
         .then((r) => {
+          clearHdLoading();
           if (r.type === 'ready') this.backend = r.backend;
         })
         .catch((e) => {
+          clearHdLoading();
           this.ready = null;
           throw e;
         });

@@ -34,7 +34,8 @@ const KEY = 'audiolibro:settings';
 const UPDATED_KEY = 'audiolibro:settingsUpdatedAt';
 
 /** Impostazioni condivise tra dispositivi (le altre dipendono dal dispositivo). */
-export const SHARED_KEYS = ['engine', 'piperVoice', 'neuralVoice', 'supertonicVoice', 'rate', 'pitch', 'volume', 'theme', 'fontSize', 'paragraphPause'] as const;
+// "engine" NON è condiviso: i modelli delle voci AI si scaricano per dispositivo.
+export const SHARED_KEYS = ['piperVoice', 'neuralVoice', 'supertonicVoice', 'rate', 'pitch', 'volume', 'theme', 'fontSize', 'paragraphPause'] as const;
 type Listener = (s: Settings) => void;
 const listeners = new Set<Listener>();
 
