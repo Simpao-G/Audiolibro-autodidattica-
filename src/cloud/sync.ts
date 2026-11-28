@@ -1,5 +1,5 @@
 import type { Session } from '@supabase/supabase-js';
-import { onSettingsChange, settingsUpdatedAt, sharedSettings, updateSettings, type Settings } from '../settings';
+import { onSettingsChange, SHARED_KEYS, settingsUpdatedAt, sharedSettings, updateSettings, type Settings } from '../settings';
 import { deleteBook, getBook, getChapters, listBooks, onPositionSaved, putMeta, saveBook } from '../storage';
 import type { BookMeta, Chapter } from '../types';
 import { BUCKET, supabase } from './client';
@@ -242,7 +242,10 @@ async function syncSettings(uid: string): Promise<void> {
   const remoteAt = data ? Date.parse(data.updated_at) || 0 : 0;
   if (data && remoteAt > localAt) {
     applyingRemoteSettings = true;
-    updateSettings(data.settings as Partial<Settings>, { fromSync: true, at: remoteAt });
+    // Solo le impostazioni condivise (es. non il motore: i modelli sono per dispositivo)
+    const remote = data.settings as Record<string, unknown>;
+    const shared = Object.fromEntries(Object.entries(remote).filter(([k]) => (SHARED_KEYS as readonly string[]).includes(k)));
+    updateSettings(shared as Partial<Settings>, { fromSync: true, at: remoteAt });
     applyingRemoteSettings = false;
   } else if (localAt > remoteAt) {
     await pushSettings(uid);

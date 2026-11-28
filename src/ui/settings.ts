@@ -1,6 +1,7 @@
 import { getSettings, updateSettings, type Settings } from '../settings';
-import { deviceEngine, piperEngine, supertonicEngine } from '../tts';
-import { SUPERTONIC_MB, SUPERTONIC_VOICES } from '../tts/supertonic';
+import { deviceEngine, engine, piperEngine, supertonicEngine } from '../tts';
+import { getVariant, setVariant, SUPERTONIC_VOICES, VARIANT_MB, type Variant } from '../tts/supertonic';
+import { clearHdCrash, hdCrashedHere } from '../tts/guard';
 import { NEURAL_VOICES } from '../tts/neural';
 import { ENGINE_FILES_MB, PIPER_VOICES } from '../tts/piper';
 import { getCloudStatus } from '../cloud/sync';
@@ -91,6 +92,7 @@ function piperSection(): HTMLElement {
                   status.textContent = `Scarico… ${Math.round(p * 100)}%`;
                   (bar.firstElementChild as HTMLElement).style.width = `${Math.round(p * 100)}%`;
                 });
+                engine.resetFallback();
                 updateSettings({ piperVoice: v.id, engine: 'piper' });
                 toast(`Voce ${v.name} pronta`);
               } catch (err) {
@@ -126,10 +128,51 @@ function piperSection(): HTMLElement {
 function supertonicSection(onPreview?: () => void): HTMLElement {
   const box = h('div', {});
   const render = async () => {
-    const has = await supertonicEngine.isDownloaded();
+    const variant = getVariant();
+    const has = await supertonicEngine.isDownloaded(variant);
     box.replaceChildren();
+    // Versione: leggera (telefoni/tablet) o completa (computer)
+    const variantSel = h('div', { class: 'segmented small', role: 'radiogroup', 'aria-label': 'Versione della voce HD' });
+    const variants: [Variant, string][] = [['lite', `Leggera · ${VARIANT_MB.lite} MB`], ['full', `Completa · ${VARIANT_MB.full} MB`]];
+    for (const [v, label] of variants) {
+      variantSel.append(
+        h('button', {
+          role: 'radio',
+          'aria-checked': String(v === variant),
+          onclick: () => {
+            if (v === getVariant()) return;
+            setVariant(v);
+            engine.resetFallback();
+            render();
+          },
+        }, label),
+      );
+    }
+    box.append(
+      variantSel,
+      h('div', { class: 'hint', style: 'margin:6px 0 10px' },
+        variant === 'lite'
+          ? 'Leggera: pensata per telefoni e tablet, usa meno memoria ed è più veloce, con la stessa voce.'
+          : 'Completa: qualità massima, consigliata sui computer (su iPhone/iPad può esaurire la memoria).'),
+    );
+    if (hdCrashedHere()) {
+      box.append(
+        h('div', { class: 'notice' },
+          'Su questo dispositivo la voce HD aveva fatto chiudere la pagina per mancanza di memoria, quindi è in pausa. ',
+          variant === 'full' ? 'Prova la versione “Leggera”, poi ' : '',
+          h('button', {
+            class: 'link-btn',
+            onclick: () => {
+              clearHdCrash();
+              engine.resetFallback();
+              toast('Voce HD riattivata: premi Play per provarla');
+              render();
+            },
+          }, 'riprova comunque')),
+      );
+    }
     if (!has) {
-      const status = h('span', { class: 'voice-status' }, `${SUPERTONIC_MB} MB`);
+      const status = h('span', { class: 'voice-status' }, `${VARIANT_MB[variant]} MB`);
       const bar = h('div', { class: 'progress', hidden: true }, h('div', { style: 'width:0%' }));
       const btn = h('button', { class: 'btn' }, 'Scarica la voce HD');
       btn.addEventListener('click', async () => {
@@ -139,7 +182,8 @@ function supertonicSection(onPreview?: () => void): HTMLElement {
           await supertonicEngine.download((p) => {
             status.textContent = `Scarico… ${Math.round(p * 100)}%`;
             (bar.firstElementChild as HTMLElement).style.width = `${Math.round(p * 100)}%`;
-          });
+          }, variant);
+          engine.resetFallback();
           updateSettings({ engine: 'supertonic' });
           toast('Voce AI HD pronta!');
         } catch (err) {
@@ -150,7 +194,7 @@ function supertonicSection(onPreview?: () => void): HTMLElement {
       box.append(
         h('div', { class: 'notice' },
           h('strong', {}, 'Voce AI di alta qualità, gratis e offline. '),
-          `Si scarica una volta sola (circa ${SUPERTONIC_MB} MB, meglio col Wi-Fi), poi funziona anche senza internet e a schermo bloccato.`),
+          `Si scarica una volta sola (circa ${VARIANT_MB[variant]} MB, meglio col Wi-Fi e tenendo l’app aperta), poi funziona anche senza internet e a schermo bloccato.`),
         h('div', { class: 'row-buttons' }, btn, status),
         bar,
       );

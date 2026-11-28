@@ -27,7 +27,11 @@ Il piano gratuito include 1 GB di spazio. Se nessuno usa l'app per circa una set
 ## ★ Voce AI HD (Supertonic 3), gratis e offline
 È la voce di qualità migliore: un modello neurale ([Supertonic 3](https://github.com/supertone-inc/supertonic)) che gira **dentro l'app**, senza server e senza account.
 - **10 voci italiane**: ♀ 1-5 e ♂ 1-5.
-- **Download**: circa 400 MB, una volta sola (meglio col Wi-Fi). I file arrivano da Hugging Face e restano nella cache del browser.
+- **Due versioni**, scelte in automatico ma modificabili in *Voce › ★ AI HD*:
+  - **Leggera (circa 190 MB)**, per telefoni e tablet: tre dei quattro modelli sono quantizzati in int8 durante la pubblicazione (`scripts/quantize_lite.py`), mentre il vocoder resta originale. Usa molta meno memoria ed è circa 1,5 volte più veloce. Verificata con Whisper: le trascrizioni sono identiche a quelle della versione completa.
+  - **Completa (circa 400 MB)**, per i computer: i modelli originali di Hugging Face.
+- **Download**: una volta sola, meglio col Wi-Fi e tenendo l'app aperta. Ogni file viene controllato, e se è incompleto viene riscaricato.
+- **Protezione per iPhone/iPad**: se il sistema chiude la pagina per mancanza di memoria durante il caricamento, al riavvio l'app passa alla voce del dispositivo e lo spiega. La voce HD resta in pausa finché non scegli "riprova comunque".
 - **Offline**: dopo il download funziona senza internet e continua anche a schermo bloccato.
 - **Velocità**: usa la **scheda grafica (WebGPU)** quando c'è (Chrome/Edge su PC, Chrome su Android, Safari su iOS 26). Senza WebGPU usa il processore, ed è più lenta: possono esserci brevi pause tra le frasi.
 - **Licenze**: codice MIT, modello OpenRAIL-M.

@@ -1,4 +1,5 @@
 import { ClipEngine } from './clip';
+import { NotDownloadedError } from './guard';
 import type { VoiceInfo } from './engine';
 import type { WorkerRequest, WorkerResponse } from './piper.worker';
 
@@ -93,7 +94,7 @@ export class PiperEngine extends ClipEngine {
     const voice = this.getVoiceId();
     if (this.readyVoice === voice) return;
     if (!(await this.isDownloaded(voice))) {
-      throw new Error('La voce AI non è ancora scaricata: aprila nelle impostazioni e premi “Scarica”');
+      throw new NotDownloadedError('La voce AI leggera non è scaricata su questo dispositivo');
     }
     await this.ensureReady(voice);
   }

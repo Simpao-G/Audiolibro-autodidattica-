@@ -201,6 +201,7 @@ dialog .body { padding: 16px 20px 24px; overflow-y: auto; max-height: calc(85vh 
 }
 .segmented button[aria-checked='true'] { background: var(--surface); color: var(--text); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15); }
 .segmented button:disabled { opacity: 0.4; cursor: not-allowed; }
+.segmented.small button { padding: 7px 6px; font-size: 0.8rem; }
 .voice-list { display: flex; flex-direction: column; gap: 8px; }
 .voice-row {
   display: grid; grid-template-columns: auto 1fr auto auto; align-items: center; gap: 10px;
